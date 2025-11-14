@@ -1823,7 +1823,40 @@ func (at *AutoTrader) inferCloseDetails(pos decision.PositionInfo) (price float6
 		}
 	}
 
-	// 4. 无法判断原因，可能是手动平仓或其他原因
+	// 4. 智能推断：根据持仓方向和止损/止盈价格的设置来推断
+	// 如果价格已经远离止损/止盈价（超过阈值），我们仍可以通过以下逻辑推断：
+	// - 持仓有止损和止盈时，根据价格方向判断
+	// - 只有止损或只有止盈时，直接使用该原因
+	if pos.StopLoss > 0 && pos.TakeProfit > 0 {
+		// 同时设置了止损和止盈，根据价格方向判断
+		if pos.Side == "long" {
+			// 多头：价格高于入场价 → 止盈，价格低于入场价 → 止损
+			if pos.EntryPrice > 0 {
+				if markPrice > pos.EntryPrice {
+					return pos.TakeProfit, "take_profit"
+				} else {
+					return pos.StopLoss, "stop_loss"
+				}
+			}
+		} else {
+			// 空头：价格低于入场价 → 止盈，价格高于入场价 → 止损
+			if pos.EntryPrice > 0 {
+				if markPrice < pos.EntryPrice {
+					return pos.TakeProfit, "take_profit"
+				} else {
+					return pos.StopLoss, "stop_loss"
+				}
+			}
+		}
+	} else if pos.StopLoss > 0 {
+		// 只设置了止损，推断为止损
+		return pos.StopLoss, "stop_loss"
+	} else if pos.TakeProfit > 0 {
+		// 只设置了止盈，推断为止盈
+		return pos.TakeProfit, "take_profit"
+	}
+
+	// 5. 无法判断原因，可能是手动平仓或其他原因
 	// 使用当前市场价作为估算平仓价
 	return markPrice, "unknown"
 }
