@@ -136,11 +136,17 @@ export function EquityChart({ traderId }: EquityChartProps) {
       raw_equity: point.total_equity,
       raw_pnl: pnl,
       raw_pnl_pct: parseFloat(pnlPct),
+      timestamp: point.timestamp,
     }
   })
 
   const currentValue = chartData[chartData.length - 1]
   const isProfit = currentValue.raw_pnl >= 0
+
+  // Get the latest timestamp for display
+  const latestTimestamp = validHistory.length > 0
+    ? new Date(validHistory[validHistory.length - 1].timestamp)
+    : null
 
   // 计算Y轴范围
   const calculateYDomain = () => {
@@ -167,6 +173,14 @@ export function EquityChart({ traderId }: EquityChartProps) {
   const CustomTooltip = ({ active, payload }: any) => {
     if (active && payload && payload.length) {
       const data = payload[0].payload
+      const tooltipTime = data.timestamp
+        ? new Date(data.timestamp).toLocaleString(language === 'zh' ? 'zh-CN' : 'en-US', {
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+          })
+        : ''
       return (
         <div
           className="rounded p-3 shadow-xl"
@@ -175,6 +189,11 @@ export function EquityChart({ traderId }: EquityChartProps) {
           <div className="text-xs mb-1" style={{ color: '#848E9C' }}>
             Cycle #{data.cycle}
           </div>
+          {tooltipTime && (
+            <div className="text-xs mb-2" style={{ color: '#848E9C' }}>
+              {tooltipTime}
+            </div>
+          )}
           <div className="font-bold mono" style={{ color: '#EAECEF' }}>
             {data.raw_equity.toFixed(2)} USDT
           </div>
@@ -414,6 +433,19 @@ export function EquityChart({ traderId }: EquityChartProps) {
           >
             {currentValue.raw_equity.toFixed(2)} USDT
           </div>
+          {latestTimestamp && (
+            <div
+              className="text-xs mt-1"
+              style={{ color: '#848E9C' }}
+            >
+              {latestTimestamp.toLocaleString(language === 'zh' ? 'zh-CN' : 'en-US', {
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+              })}
+            </div>
+          )}
         </div>
         <div
           className="p-2 rounded transition-all hover:bg-opacity-50"
