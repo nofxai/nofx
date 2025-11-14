@@ -1773,58 +1773,38 @@ func (at *AutoTrader) generateAutoCloseActions(closedPositions []decision.Positi
 
 // inferCloseDetails - Intelligently infer close price and reason based on position data
 func (at *AutoTrader) inferCloseDetails(pos decision.PositionInfo) (price float64, reason string) {
-	const priceThreshold = 0.01 // 1% 价格阈值，用于判断是否接近目标价格
-
 	markPrice := pos.MarkPrice
+	hasStopLoss := pos.StopLoss > 0
+	hasTakeProfit := pos.TakeProfit > 0
 
-	// 1. 优先检查是否接近强平价（爆仓）- 因为这是最严重的情况
-	if pos.LiquidationPrice > 0 {
-		liquidationThreshold := 0.02 // 2% 强平价阈值（更宽松，因为接近强平时会被系统平仓）
+	// 情况 1：同时设置止损和止盈，根据价格方向判断
+	if hasStopLoss && hasTakeProfit {
 		if pos.Side == "long" {
-			// 多头爆仓：价格接近强平价
-			if markPrice <= pos.LiquidationPrice*(1+liquidationThreshold) {
-				return pos.LiquidationPrice, "liquidation"
-			}
-		} else {
-			// 空头爆仓：价格接近强平价
-			if markPrice >= pos.LiquidationPrice*(1-liquidationThreshold) {
-				return pos.LiquidationPrice, "liquidation"
-			}
-		}
-	}
-
-	// 2. 检查是否触发止损
-	if pos.StopLoss > 0 {
-		if pos.Side == "long" {
-			// 多头止损：价格跌破止损价
-			if markPrice <= pos.StopLoss*(1+priceThreshold) {
-				return pos.StopLoss, "stop_loss"
-			}
-		} else {
-			// 空头止损：价格涨破止损价
-			if markPrice >= pos.StopLoss*(1-priceThreshold) {
-				return pos.StopLoss, "stop_loss"
-			}
-		}
-	}
-
-	// 3. 检查是否触发止盈
-	if pos.TakeProfit > 0 {
-		if pos.Side == "long" {
-			// 多头止盈：价格涨到止盈价
-			if markPrice >= pos.TakeProfit*(1-priceThreshold) {
+			// 多头：价格 > 入场价 = 止盈，价格 < 入场价 = 止损
+			if markPrice >= pos.EntryPrice {
 				return pos.TakeProfit, "take_profit"
 			}
+			return pos.StopLoss, "stop_loss"
 		} else {
-			// 空头止盈：价格跌到止盈价
-			if markPrice <= pos.TakeProfit*(1+priceThreshold) {
+			// 空头：价格 < 入场价 = 止盈，价格 > 入场价 = 止损
+			if markPrice <= pos.EntryPrice {
 				return pos.TakeProfit, "take_profit"
 			}
+			return pos.StopLoss, "stop_loss"
 		}
 	}
 
-	// 4. 无法判断原因，可能是手动平仓或其他原因
-	// 使用当前市场价作为估算平仓价
+	// 情况 2：只设置止损
+	if hasStopLoss {
+		return pos.StopLoss, "stop_loss"
+	}
+
+	// 情况 3：只设置止盈
+	if hasTakeProfit {
+		return pos.TakeProfit, "take_profit"
+	}
+
+	// 情况 4：都未设置，无法判断
 	return markPrice, "unknown"
 }
 
