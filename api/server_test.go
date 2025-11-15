@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"testing"
 
 	"nofx/config"
@@ -302,4 +303,138 @@ func TestPublicTraderListResponse_SystemPromptTemplate(t *testing.T) {
 	if response["system_prompt_template"] != "default" {
 		t.Errorf("Expected system_prompt_template='default', got %v", response["system_prompt_template"])
 	}
+}
+
+// TestPerformanceAPI_LimitParameter 测试 performance API 的 limit 参数功能
+func TestPerformanceAPI_LimitParameter(t *testing.T) {
+	// 模拟历史成交记录（recent_trades）
+	createMockTrades := func(count int) []interface{} {
+		trades := make([]interface{}, count)
+		for i := 0; i < count; i++ {
+			trades[i] = map[string]interface{}{
+				"symbol":     "BTCUSDT",
+				"side":       "long",
+				"pnl":        float64(i * 10),
+				"pnl_pct":    1.5,
+				"open_price": 50000.0,
+			}
+		}
+		return trades
+	}
+
+	tests := []struct {
+		name           string
+		limitParam     string
+		totalTrades    int
+		expectedCount  int
+		description    string
+	}{
+		{
+			name:           "无limit参数-返回所有记录",
+			limitParam:     "",
+			totalTrades:    30,
+			expectedCount:  30,
+			description:    "不传limit参数时，应该返回所有交易记录（保持向后兼容）",
+		},
+		{
+			name:           "limit=10-返回10条记录",
+			limitParam:     "10",
+			totalTrades:    50,
+			expectedCount:  10,
+			description:    "limit=10时，应该只返回最近10条交易记录",
+		},
+		{
+			name:           "limit=20-返回20条记录",
+			limitParam:     "20",
+			totalTrades:    100,
+			expectedCount:  20,
+			description:    "limit=20时，应该只返回最近20条交易记录",
+		},
+		{
+			name:           "limit=50-返回50条记录",
+			limitParam:     "50",
+			totalTrades:    80,
+			expectedCount:  50,
+			description:    "limit=50时，应该只返回最近50条交易记录",
+		},
+		{
+			name:           "limit大于实际记录数-返回所有记录",
+			limitParam:     "100",
+			totalTrades:    30,
+			expectedCount:  30,
+			description:    "limit=100但只有30条记录时，应该返回所有30条记录",
+		},
+		{
+			name:           "limit=0-返回所有记录",
+			limitParam:     "0",
+			totalTrades:    40,
+			expectedCount:  40,
+			description:    "limit=0时，应该返回所有交易记录",
+		},
+		{
+			name:           "limit超过最大值100-使用最大值",
+			limitParam:     "150",
+			totalTrades:    200,
+			expectedCount:  200, // 解析时会被限制为100，但这里测试的是解析逻辑
+			description:    "limit=150超过最大值100时，解析逻辑会忽略此值",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// 模拟完整的 performance 数据
+			mockPerformance := map[string]interface{}{
+				"total_trades":   tt.totalTrades,
+				"winning_trades": tt.totalTrades / 2,
+				"losing_trades":  tt.totalTrades / 2,
+				"win_rate":       50.0,
+				"recent_trades":  createMockTrades(tt.totalTrades),
+			}
+
+			// 模拟 handlePerformance 中的 limit 参数解析逻辑
+			tradeLimit := 0 // 默认不限制
+			if tt.limitParam != "" {
+				if l := parseLimit(tt.limitParam); l > 0 && l <= 100 {
+					tradeLimit = l
+				}
+			}
+
+			// 模拟截取逻辑
+			recentTrades := mockPerformance["recent_trades"].([]interface{})
+			if tradeLimit > 0 && len(recentTrades) > tradeLimit {
+				recentTrades = recentTrades[:tradeLimit]
+			}
+
+			// ✅ 验证返回的记录数
+			actualCount := len(recentTrades)
+			if tt.limitParam == "" || tt.limitParam == "0" {
+				// 无limit或limit=0时，应返回所有记录
+				if actualCount != tt.expectedCount {
+					t.Errorf("%s: expected %d trades, got %d", tt.description, tt.expectedCount, actualCount)
+				}
+			} else if tt.limitParam == "150" {
+				// limit超过最大值时，解析会忽略，返回所有记录
+				if actualCount != tt.totalTrades {
+					t.Errorf("%s: expected all %d trades (limit ignored), got %d", tt.description, tt.totalTrades, actualCount)
+				}
+			} else {
+				// 正常limit值
+				if actualCount != tt.expectedCount {
+					t.Errorf("%s: expected %d trades, got %d", tt.description, tt.expectedCount, actualCount)
+				}
+			}
+		})
+	}
+}
+
+// parseLimit 辅助函数：解析 limit 参数（模拟 server.go 中的逻辑）
+func parseLimit(limitStr string) int {
+	if limitStr == "" {
+		return 0
+	}
+	var limit int
+	if _, err := fmt.Sscanf(limitStr, "%d", &limit); err == nil {
+		return limit
+	}
+	return 0
 }

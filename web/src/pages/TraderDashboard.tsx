@@ -4,6 +4,7 @@ import useSWR from 'swr'
 import { api } from '../lib/api'
 import { EquityChart } from '../components/EquityChart'
 import AILearning from '../components/AILearning'
+import RecordLimitSelector from '../components/RecordLimitSelector'
 import { useLanguage } from '../contexts/LanguageContext'
 import { useAuth } from '../contexts/AuthContext'
 import { t, type Language } from '../i18n/translations'
@@ -390,7 +391,13 @@ export default function TraderDashboard() {
       )}
 
       {/* Account Overview */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-8">
+        <StatCard
+          title={t('initialBalance', language)}
+          value={`${account?.initial_balance?.toFixed(2) || '0.00'} USDT`}
+          coloredSubtitle={`${account?.total_pnl !== undefined && account.total_pnl >= 0 ? '+' : ''}${account?.total_pnl?.toFixed(2) || '0.00'} USDT`}
+          positive={(account?.total_pnl ?? 0) >= 0}
+        />
         <StatCard
           title={t('totalEquity', language)}
           value={`${account?.total_equity?.toFixed(2) || '0.00'} USDT`}
@@ -616,29 +623,11 @@ export default function TraderDashboard() {
             </div>
 
             {/* 显示数量选择器 */}
-            <div className="flex items-center gap-2">
-              <span className="text-xs" style={{ color: '#848E9C' }}>
-                {language === 'zh' ? '显示' : 'Show'}:
-              </span>
-              <select
-                value={decisionLimit}
-                onChange={(e) => handleLimitChange(parseInt(e.target.value, 10))}
-                className="rounded px-2 py-1 text-xs font-medium cursor-pointer transition-colors"
-                style={{
-                  background: '#1E2329',
-                  border: '1px solid #2B3139',
-                  color: '#EAECEF',
-                }}
-              >
-                <option value={5}>5</option>
-                <option value={10}>10</option>
-                <option value={20}>20</option>
-                <option value={50}>50</option>
-              </select>
-              <span className="text-xs" style={{ color: '#848E9C' }}>
-                {language === 'zh' ? '条' : ''}
-              </span>
-            </div>
+            <RecordLimitSelector
+              limit={decisionLimit}
+              onLimitChange={handleLimitChange}
+              language={language}
+            />
           </div>
 
           <div
@@ -684,12 +673,14 @@ function StatCard({
   change,
   positive,
   subtitle,
+  coloredSubtitle,
 }: {
   title: string
   value: string
   change?: number
   positive?: boolean
   subtitle?: string
+  coloredSubtitle?: string
 }) {
   return (
     <div className="stat-card animate-fade-in">
@@ -714,6 +705,14 @@ function StatCard({
             {positive ? '▲' : '▼'} {positive ? '+' : ''}
             {change.toFixed(2)}%
           </div>
+        </div>
+      )}
+      {coloredSubtitle && (
+        <div
+          className="text-sm mt-2 mono font-bold"
+          style={{ color: positive ? '#0ECB81' : '#F6465D' }}
+        >
+          {coloredSubtitle}
         </div>
       )}
       {subtitle && (

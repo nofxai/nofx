@@ -14,6 +14,7 @@ import (
 type DecisionRecord struct {
 	Timestamp      time.Time          `json:"timestamp"`       // 决策时间
 	CycleNumber    int                `json:"cycle_number"`    // 周期编号
+	Exchange       string             `json:"exchange"`        // 交易所类型 (binance/hyperliquid/aster)
 	SystemPrompt   string             `json:"system_prompt"`   // 系统提示词（发送给AI的系统prompt）
 	InputPrompt    string             `json:"input_prompt"`    // 发送给AI的输入prompt
 	CoTTrace       string             `json:"cot_trace"`       // AI思维链（输出）
@@ -36,6 +37,7 @@ type AccountSnapshot struct {
 	TotalUnrealizedProfit float64 `json:"total_unrealized_profit"`
 	PositionCount         int     `json:"position_count"`
 	MarginUsedPct         float64 `json:"margin_used_pct"`
+	InitialBalance        float64 `json:"initial_balance"` // 记录当时的初始余额基准
 }
 
 // PositionSnapshot 持仓快照
@@ -63,6 +65,22 @@ type DecisionAction struct {
 	Error     string    `json:"error"`     // 错误信息
 }
 
+// IDecisionLogger 决策日志记录器接口
+type IDecisionLogger interface {
+	// LogDecision 记录决策
+	LogDecision(record *DecisionRecord) error
+	// GetLatestRecords 获取最近N条记录（按时间正序：从旧到新）
+	GetLatestRecords(n int) ([]*DecisionRecord, error)
+	// GetRecordByDate 获取指定日期的所有记录
+	GetRecordByDate(date time.Time) ([]*DecisionRecord, error)
+	// CleanOldRecords 清理N天前的旧记录
+	CleanOldRecords(days int) error
+	// GetStatistics 获取统计信息
+	GetStatistics() (*Statistics, error)
+	// AnalyzePerformance 分析最近N个周期的交易表现
+	AnalyzePerformance(lookbackCycles int) (*PerformanceAnalysis, error)
+}
+
 // DecisionLogger 决策日志记录器
 type DecisionLogger struct {
 	logDir      string
@@ -70,7 +88,7 @@ type DecisionLogger struct {
 }
 
 // NewDecisionLogger 创建决策日志记录器
-func NewDecisionLogger(logDir string) *DecisionLogger {
+func NewDecisionLogger(logDir string) IDecisionLogger {
 	if logDir == "" {
 		logDir = "decision_logs"
 	}
@@ -334,6 +352,25 @@ type SymbolPerformance struct {
 	AvgPnL        float64 `json:"avg_pn_l"`       // 平均盈亏
 }
 
+// getTakerFeeRate 获取交易所的Taker费率
+// 基于公开信息：
+// - Aster: Maker 0.010%, Taker 0.035%
+// - Hyperliquid: Maker 0.015%, Taker 0.045%
+// - Binance Futures: Maker 0.020%, Taker 0.050% (默认费率)
+func getTakerFeeRate(exchange string) float64 {
+	switch exchange {
+	case "aster":
+		return 0.00035 // 0.035%
+	case "hyperliquid":
+		return 0.00045 // 0.045%
+	case "binance":
+		return 0.0005 // 0.050%
+	default:
+		// 对于未知交易所，使用保守估计（Binance费率）
+		return 0.0005
+	}
+}
+
 // AnalyzePerformance 分析最近N个周期的交易表现
 func (l *DecisionLogger) AnalyzePerformance(lookbackCycles int) (*PerformanceAnalysis, error) {
 	records, err := l.GetLatestRecords(lookbackCycles)
@@ -473,13 +510,21 @@ func (l *DecisionLogger) AnalyzePerformance(lookbackCycles int) (*PerformanceAna
 						actualQuantity = action.Quantity
 					}
 
-					// 计算本次平仓的盈亏（USDT）
+					// 计算本次平仓的盈亏（USDT）- 包含手续费
 					var pnl float64
 					if side == "long" {
 						pnl = actualQuantity * (action.Price - openPrice)
 					} else {
 						pnl = actualQuantity * (openPrice - action.Price)
 					}
+
+					// ⚠️ 扣除交易手续费（开仓 + 平仓各一次）
+					// 获取交易所费率（从record中获取，如果没有则使用默认值）
+					feeRate := getTakerFeeRate(record.Exchange)
+					openFee := actualQuantity * openPrice * feeRate   // 开仓手续费
+					closeFee := actualQuantity * action.Price * feeRate // 平仓手续费
+					totalFees := openFee + closeFee
+					pnl -= totalFees // 从盈亏中扣除手续费
 
 					// 🔧 BUG FIX：處理 partial_close 聚合邏輯
 					if action.Action == "partial_close" {

@@ -1,0 +1,72 @@
+name: Claude Code
+
+on:
+  # 手动 mention @claude 时触发
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  issues:
+    types: [opened, assigned]
+  pull_request_review:
+    types: [submitted]
+
+  # 自动 PR review：PR 创建和更新时触发
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+  # 手动触发
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number to review'
+        required: false
+        type: number
+
+jobs:
+  claude:
+    # 条件：mention @claude 或者是 PR 事件
+    if: |
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
+      (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude'))) ||
+      github.event_name == 'pull_request' ||
+      github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      id-token: write
+      actions: read # Required for Claude to read CI results on PRs
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 获取完整历史以便更好的上下文
+
+      # 自动 PR review
+      - name: Run Claude Code - Auto Review
+        if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          additional_permissions: |
+            actions: read
+          # 自动执行 code review
+          prompt: '/20-code-review'
+
+      # 手动 @claude mention
+      - name: Run Claude Code - Manual
+        if: |
+          github.event_name == 'issue_comment' ||
+          github.event_name == 'pull_request_review_comment' ||
+          github.event_name == 'pull_request_review' ||
+          github.event_name == 'issues'
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          additional_permissions: |
+            actions: read
+          # 手动调用时，Claude 会执行 comment 中的指令

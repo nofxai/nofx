@@ -359,10 +359,18 @@ export const api = {
     return res.json()
   },
 
-  // 获取AI学习表现分析（支持trader_id）
-  async getPerformance(traderId?: string): Promise<any> {
-    const url = traderId
-      ? `${API_BASE}/performance?trader_id=${traderId}`
+  // 获取AI学习表现分析（支持trader_id和limit参数）
+  async getPerformance(traderId?: string, limit?: number): Promise<any> {
+    const params = new URLSearchParams()
+    if (traderId) {
+      params.append('trader_id', traderId)
+    }
+    if (limit !== undefined && limit > 0) {
+      params.append('limit', limit.toString())
+    }
+
+    const url = params.toString()
+      ? `${API_BASE}/performance?${params}`
       : `${API_BASE}/performance`
     const res = await httpClient.get(url, getAuthHeaders())
     if (!res.ok) throw new Error('获取AI学习数据失败')

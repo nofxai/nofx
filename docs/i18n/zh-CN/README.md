@@ -8,8 +8,6 @@
 
 **语言 / Languages:** [English](../../../README.md) | [中文](../zh-CN/README.md) | [Українська](../uk/README.md) | [Русский](../ru/README.md) | [日本語](../ja/README.md)
 
-**官方推特:** [@nofx_ai](https://x.com/nofx_ai)
-
 **📚 文档中心:** [文档首页](../../README.md) | [快速开始](../../getting-started/README.zh-CN.md) | [更新日志](../../../CHANGELOG.zh-CN.md) | [社区指南](../../community/README.md)
 
 ---
@@ -57,15 +55,12 @@
 ### 👥 核心团队
 
 - **Tinkle** - [@Web3Tinkle](https://x.com/Web3Tinkle)
-- **Tintin** - [@Tintinx2021](https://x.com/Tintinx2021)
 
 ### 💼 种子轮融资进行中
 
 我们正在进行**种子轮融资**。
 
-**投资咨询**，请通过 Twitter 私信联系 **Tinkle** 或 **Tintin**。
-
-**商务合作**，请私信官方推特 [@nofx_ai](https://x.com/nofx_ai)。
+**投资咨询**，请通过 Twitter 私信联系 **Tinkle**。
 
 ---
 
@@ -128,7 +123,7 @@ NOFX现已支持**三大交易所**：Binance、Hyperliquid和Aster DEX！
 - 🌐 **多链支持** - 在你喜欢的EVM链上交易
 
 **快速开始：**
-1. 通过[推荐链接注册Aster](https://www.asterdex.com/en/referral/fdfc0e)（享手续费优惠）
+1. [注册 Aster DEX](https://www.asterdex.com/)
 2. 访问[Aster API钱包](https://www.asterdex.com/en/api-wallet)
 3. 连接你的主钱包并创建API钱包
 4. 复制API Signer地址和私钥
@@ -246,15 +241,15 @@ NOFX 采用现代化的模块化架构：
 
 ---
 
-## 💰 注册币安账户（省手续费！）
+## 💰 注册币安账户
 
-使用本系统前，您需要一个币安合约账户。**使用我们的推荐链接注册可享受手续费优惠：**
+使用本系统前，您需要一个币安合约账户。
 
-**🎁 [注册币安 - 享手续费折扣](https://www.binance.com/join?ref=TINKLEVIP)**
+**[注册币安](https://www.binance.com/)**
 
 ### 注册步骤：
 
-1. **点击上方链接** 访问币安注册页面
+1. **访问币安** 访问币安注册页面
 2. **完成注册** 使用邮箱/手机号注册
 3. **完成KYC身份认证**（合约交易必须）
 4. **开通合约账户**：
@@ -265,12 +260,6 @@ NOFX 采用现代化的模块化架构：
    - 创建新的API密钥，**务必勾选"合约"权限**
    - 保存API Key和Secret Key（~~config.json中需要~~ *Web界面中需要*）
    - **重要**：添加IP白名单以确保安全
-
-### 手续费优惠说明：
-
-- ✅ **现货交易**：最高享30%手续费返佣
-- ✅ **合约交易**：最高享30%手续费返佣
-- ✅ **终身有效**：永久享受交易手续费折扣
 
 ---
 
@@ -610,7 +599,7 @@ Hyperliquid支持**代理钱包**功能 - 专门用于交易自动化的安全�
 
 **步骤1**：注册并创建Aster API钱包
 
-1. 通过[推荐链接注册Aster](https://www.asterdex.com/en/referral/fdfc0e)（享手续费优惠）
+1. [注册 Aster DEX](https://www.asterdex.com/)
 2. 访问[Aster API钱包](https://www.asterdex.com/en/api-wallet)
 3. 连接你的主钱包（MetaMask、WalletConnect等）
 4. 点击"创建API钱包"

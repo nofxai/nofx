@@ -42,12 +42,15 @@ type PositionInfo struct {
 	LiquidationPrice float64 `json:"liquidation_price"`
 	MarginUsed       float64 `json:"margin_used"`
 	UpdateTime       int64   `json:"update_time"` // 持仓更新时间戳（毫秒）
+	StopLoss         float64 `json:"stop_loss,omitempty"`         // 止损价格（用于推断平仓原因）
+	TakeProfit       float64 `json:"take_profit,omitempty"`       // 止盈价格（用于推断平仓原因）
 }
 
 // AccountInfo 账户信息
 type AccountInfo struct {
 	TotalEquity      float64 `json:"total_equity"`      // 账户净值
 	AvailableBalance float64 `json:"available_balance"` // 可用余额
+	UnrealizedPnL    float64 `json:"unrealized_pnl"`    // 未实现盈亏
 	TotalPnL         float64 `json:"total_pnl"`         // 总盈亏
 	TotalPnLPct      float64 `json:"total_pnl_pct"`     // 总盈亏百分比
 	MarginUsed       float64 `json:"margin_used"`       // 已用保证金
@@ -122,12 +125,12 @@ type FullDecision struct {
 }
 
 // GetFullDecision 获取AI的完整交易决策（批量分析所有币种和持仓）
-func GetFullDecision(ctx *Context, mcpClient *mcp.Client) (*FullDecision, error) {
+func GetFullDecision(ctx *Context, mcpClient mcp.AIClient) (*FullDecision, error) {
 	return GetFullDecisionWithCustomPrompt(ctx, mcpClient, "", false, "")
 }
 
 // GetFullDecisionWithCustomPrompt 获取AI的完整交易决策（支持自定义prompt和模板选择）
-func GetFullDecisionWithCustomPrompt(ctx *Context, mcpClient *mcp.Client, customPrompt string, overrideBase bool, templateName string) (*FullDecision, error) {
+func GetFullDecisionWithCustomPrompt(ctx *Context, mcpClient mcp.AIClient, customPrompt string, overrideBase bool, templateName string) (*FullDecision, error) {
 	if ctx == nil {
 		return nil, fmt.Errorf("context is nil")
 	}
@@ -356,11 +359,12 @@ func buildSystemPrompt(accountEquity float64, btcEthLeverage, altcoinLeverage in
 	sb.WriteString("# 硬约束（风险控制）\n\n")
 	sb.WriteString("1. 风险回报比: 必须 ≥ 1:3（冒1%风险，赚3%+收益）\n")
 	sb.WriteString("2. 最多持仓: 3个币种（质量>数量）\n")
-	sb.WriteString(fmt.Sprintf("3. 单币仓位: 山寨%.0f-%.0f U | BTC/ETH %.0f-%.0f U\n",
-		accountEquity*0.8, accountEquity*1.5, accountEquity*5, accountEquity*10))
-	sb.WriteString(fmt.Sprintf("4. 杠杆限制: **山寨币最大%dx杠杆** | **BTC/ETH最大%dx杠杆**\n", altcoinLeverage, btcEthLeverage))
-	sb.WriteString("5. 保证金使用率 ≤ 90%\n")
-	sb.WriteString("6. 开仓金额: 建议 ≥12 USDT（交易所最小名义价值10 USDT + 安全边际）\n\n")
+	sb.WriteString(fmt.Sprintf("3. 单币仓位上限: 山寨%.0f U | BTC/ETH %.0f U（基于净值的仓位上限，实际开仓还需考虑可用余额）\n",
+		accountEquity*1.5, accountEquity*10))
+	sb.WriteString(fmt.Sprintf("4. 杠杆限制: **山寨币最大%dx杠杆** | **BTC/ETH最大%dx杠杆** (⚠️ 严格执行，不可超过)\n", altcoinLeverage, btcEthLeverage))
+	sb.WriteString("5. 保证金: 总使用率 ≤ 90%\n")
+	sb.WriteString("6. 开仓金额: 建议 **≥12 USDT** (交易所最小名义价值 10 USDT + 安全边际)\n")
+	sb.WriteString("7. ⚠️ **开仓保证金检查**: 开仓前必须确保 `所需保证金 ≤ 可用余额`，所需保证金 = position_size_usd / leverage + 手续费\n\n")
 
 	// 4. 交易频率与信号质量
 	sb.WriteString("# ⏱️ 交易频率认知\n\n")
@@ -403,13 +407,17 @@ func buildSystemPrompt(accountEquity float64, btcEthLeverage, altcoinLeverage in
 	sb.WriteString("第二步: JSON决策数组\n\n")
 	sb.WriteString("```json\n[\n")
 	sb.WriteString(fmt.Sprintf("  {\"symbol\": \"BTCUSDT\", \"action\": \"open_short\", \"leverage\": %d, \"position_size_usd\": %.0f, \"stop_loss\": 97000, \"take_profit\": 91000, \"confidence\": 85, \"risk_usd\": 300, \"reasoning\": \"下跌趋势+MACD死叉\"},\n", btcEthLeverage, accountEquity*5))
+	sb.WriteString("  {\"symbol\": \"SOLUSDT\", \"action\": \"update_stop_loss\", \"new_stop_loss\": 155, \"reasoning\": \"移动止损至保本位\"},\n")
 	sb.WriteString("  {\"symbol\": \"ETHUSDT\", \"action\": \"close_long\", \"reasoning\": \"止盈离场\"}\n")
 	sb.WriteString("]\n```\n")
 	sb.WriteString("</decision>\n\n")
 	sb.WriteString("## 字段说明\n\n")
-	sb.WriteString("- `action`: open_long | open_short | close_long | close_short | hold | wait\n")
+	sb.WriteString("- `action`: open_long | open_short | close_long | close_short | update_stop_loss | update_take_profit | partial_close | hold | wait\n")
 	sb.WriteString("- `confidence`: 0-100（开仓建议≥75）\n")
-	sb.WriteString("- 开仓时必填: leverage, position_size_usd, stop_loss, take_profit, confidence, risk_usd, reasoning\n\n")
+	sb.WriteString("- 开仓时必填: leverage, position_size_usd, stop_loss, take_profit, confidence, risk_usd, reasoning\n")
+	sb.WriteString("- update_stop_loss 时必填: new_stop_loss (注意是 new_stop_loss，不是 stop_loss)\n")
+	sb.WriteString("- update_take_profit 时必填: new_take_profit (注意是 new_take_profit，不是 take_profit)\n")
+	sb.WriteString("- partial_close 时必填: close_percentage (0-100)\n\n")
 
 	return sb.String()
 }
@@ -430,10 +438,11 @@ func buildUserPrompt(ctx *Context) string {
 	}
 
 	// 账户
-	sb.WriteString(fmt.Sprintf("账户: 净值%.2f | 余额%.2f (%.1f%%) | 盈亏%+.2f%% | 保证金%.1f%% | 持仓%d个\n\n",
+	sb.WriteString(fmt.Sprintf("账户: 净值%.2f | **可用余额%.2f USDT** (%.1f%%) | 已用保证金%.2f | 盈亏%+.2f%% | 保证金使用率%.1f%% | 持仓%d个\n\n",
 		ctx.Account.TotalEquity,
 		ctx.Account.AvailableBalance,
 		(ctx.Account.AvailableBalance/ctx.Account.TotalEquity)*100,
+		ctx.Account.MarginUsed,
 		ctx.Account.TotalPnLPct,
 		ctx.Account.MarginUsedPct,
 		ctx.Account.PositionCount))
