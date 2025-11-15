@@ -362,7 +362,10 @@ func (s *Server) handleBacktestMetrics(c *gin.Context) {
 	metrics, err := s.backtestManager.GetMetrics(runID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) || errors.Is(err, os.ErrNotExist) {
-			c.JSON(http.StatusAccepted, gin.H{"error": "metrics not ready yet"})
+			c.JSON(http.StatusNotFound, gin.H{
+				"error": "metrics not ready yet",
+				"code":  "METRICS_NOT_READY",
+			})
 			return
 		}
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})

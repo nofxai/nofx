@@ -7,6 +7,8 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"time"
 )
 
@@ -87,6 +89,39 @@ type DecisionLogger struct {
 	cycleNumber int
 }
 
+// RedactSensitiveInfo 脱敏敏感信息（API Keys, Private Keys等）
+// 保留前4位和后4位，中间用 * 替代
+func RedactSensitiveInfo(text string) string {
+	if text == "" {
+		return text
+	}
+
+	// 脱敏类似 sk-xxxxxxxxxxxx 格式的 API Key
+	apiKeyPattern := regexp.MustCompile(`\b(sk-|key_)([a-zA-Z0-9]{4})[a-zA-Z0-9]{8,}([a-zA-Z0-9]{4})\b`)
+	text = apiKeyPattern.ReplaceAllString(text, "${1}${2}**********${3}")
+
+	// 脱敏长度超过20的十六进制字符串（可能是私钥）
+	hexKeyPattern := regexp.MustCompile(`\b0x([a-fA-F0-9]{4})[a-fA-F0-9]{32,}([a-fA-F0-9]{4})\b`)
+	text = hexKeyPattern.ReplaceAllString(text, "0x${1}**********${2}")
+
+	// 脱敏不带0x前缀的长十六进制字符串
+	plainHexPattern := regexp.MustCompile(`\b([a-fA-F0-9]{4})[a-fA-F0-9]{56,}([a-fA-F0-9]{4})\b`)
+	text = plainHexPattern.ReplaceAllString(text, "${1}**********${2}")
+
+	return text
+}
+
+// RedactAPIKey 专门用于脱敏 API Key
+func RedactAPIKey(apiKey string) string {
+	if apiKey == "" {
+		return ""
+	}
+	if len(apiKey) <= 12 {
+		return strings.Repeat("*", len(apiKey))
+	}
+	return apiKey[:4] + strings.Repeat("*", len(apiKey)-8) + apiKey[len(apiKey)-4:]
+}
+
 // NewDecisionLogger 创建决策日志记录器
 func NewDecisionLogger(logDir string) IDecisionLogger {
 	if logDir == "" {
@@ -124,6 +159,21 @@ func (l *DecisionLogger) LogDecision(record *DecisionRecord) error {
 		record.Timestamp = time.Now().UTC()
 	} else {
 		record.Timestamp = record.Timestamp.UTC()
+	}
+
+	// 脱敏敏感信息（API Keys, Private Keys）防止泄露
+	record.SystemPrompt = RedactSensitiveInfo(record.SystemPrompt)
+	record.InputPrompt = RedactSensitiveInfo(record.InputPrompt)
+	record.ErrorMessage = RedactSensitiveInfo(record.ErrorMessage)
+
+	// 脱敏执行日志中的敏感信息
+	for i := range record.ExecutionLog {
+		record.ExecutionLog[i] = RedactSensitiveInfo(record.ExecutionLog[i])
+	}
+
+	// 脱敏决策动作中的错误信息
+	for i := range record.Decisions {
+		record.Decisions[i].Error = RedactSensitiveInfo(record.Decisions[i].Error)
 	}
 
 	// 生成文件名：decision_YYYYMMDD_HHMMSS_cycleN.json
