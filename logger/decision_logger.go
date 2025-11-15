@@ -81,6 +81,8 @@ type IDecisionLogger interface {
 	GetStatistics() (*Statistics, error)
 	// AnalyzePerformance 分析最近N个周期的交易表现
 	AnalyzePerformance(lookbackCycles int) (*PerformanceAnalysis, error)
+	// SetCycleNumber 设置周期编号（用于恢复）
+	SetCycleNumber(n int)
 }
 
 // DecisionLogger 决策日志记录器

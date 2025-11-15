@@ -84,7 +84,7 @@ func (acc *BacktestAccount) Open(symbol, side string, quantity float64, leverage
 	fee := notional * acc.feeRate
 
 	// 风险保护：单笔交易名义价值不能超过账户总资产的50倍
-	totalEquity := acc.Equity(map[string]float64{symbol: price})
+	totalEquity, _, _ := acc.TotalEquity(map[string]float64{symbol: price})
 	const MaxNotionalMultiplier = 50.0
 	if notional > totalEquity*MaxNotionalMultiplier {
 		return nil, 0, 0, fmt.Errorf("notional value %.2f exceeds maximum allowed (%.2f x %.0fx = %.2f)",
