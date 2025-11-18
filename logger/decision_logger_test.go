@@ -1724,45 +1724,62 @@ func TestGetPerformanceFilteredByPromptHash(t *testing.T) {
 		t.Fatalf("Failed to log decision: %v", err)
 	}
 
-	// === 验证：GetPerformanceWithCache 应该只返回 prompt2 的统计 ===
-	performance, err := logger.GetPerformanceWithCache(100, false)
+	// === 验证：GetPerformanceWithCache 不过滤时应该返回所有交易 ===
+	performanceAll, err := logger.GetPerformanceWithCache(100, false)
 	if err != nil {
-		t.Fatalf("❌ GetPerformanceWithCache failed: %v", err)
+		t.Fatalf("❌ GetPerformanceWithCache (no filter) failed: %v", err)
 	}
 
-	// 验证 1: TotalTrades 应该是 2（只计算 prompt2 的交易）
-	if performance.TotalTrades != 2 {
-		t.Errorf("❌ Expected TotalTrades = 2 (only prompt2), got %d", performance.TotalTrades)
+	// 验证 1: 不过滤时应该返回所有 5 笔交易
+	if performanceAll.TotalTrades != 5 {
+		t.Errorf("❌ Expected TotalTrades = 5 (all trades), got %d", performanceAll.TotalTrades)
 	}
 
-	// 验证 2: WinRate 应该是 0%（prompt2 的两笔都是亏损）
-	if performance.WinRate != 0.0 {
-		t.Errorf("❌ Expected WinRate = 0%% (both prompt2 trades are losses), got %.2f%%", performance.WinRate)
+	// 验证 2: 不过滤时 WinRate 应该是 60% (5笔中3笔盈利)
+	expectedWinRate := 60.0
+	if performanceAll.WinRate < expectedWinRate-0.1 || performanceAll.WinRate > expectedWinRate+0.1 {
+		t.Errorf("❌ Expected WinRate ~%.2f%% (3 wins out of 5), got %.2f%%", expectedWinRate, performanceAll.WinRate)
 	}
 
-	// 验证 3: RecentTrades 应该只包含 prompt2 的交易
-	if len(performance.RecentTrades) != 2 {
-		t.Errorf("❌ Expected 2 recent trades (prompt2 only), got %d", len(performance.RecentTrades))
+	// === 验证：GetPerformanceWithCache 过滤时应该只返回当前 prompt 的交易 ===
+	performanceFiltered, err := logger.GetPerformanceWithCache(100, true)
+	if err != nil {
+		t.Fatalf("❌ GetPerformanceWithCache (filtered) failed: %v", err)
 	}
 
-	// 验证 4: RecentTrades 的 PromptHash 应该都是 prompt2 的 hash
-	for i, trade := range performance.RecentTrades {
+	// 验证 3: 过滤时应该只返回 prompt2 的 2 笔交易（最新的 prompt）
+	if performanceFiltered.TotalTrades != 2 {
+		t.Errorf("❌ Expected TotalTrades = 2 (only prompt2), got %d", performanceFiltered.TotalTrades)
+	}
+
+	// 验证 4: 过滤时 WinRate 应该是 0%（prompt2 的两笔都是亏损）
+	if performanceFiltered.WinRate != 0.0 {
+		t.Errorf("❌ Expected WinRate = 0%% (both prompt2 trades are losses), got %.2f%%", performanceFiltered.WinRate)
+	}
+
+	// 验证 5: RecentTrades 应该只包含 prompt2 的交易
+	if len(performanceFiltered.RecentTrades) != 2 {
+		t.Errorf("❌ Expected 2 recent trades (prompt2 only), got %d", len(performanceFiltered.RecentTrades))
+	}
+
+	// 验证 6: RecentTrades 的 PromptHash 应该都是 prompt2 的 hash
+	for i, trade := range performanceFiltered.RecentTrades {
 		if trade.PromptHash != promptHash2 {
 			t.Errorf("❌ Trade %d has wrong PromptHash: expected %s, got %s", i, promptHash2, trade.PromptHash)
 		}
 	}
 
-	// 验证 5: SharpeRatio 应该基于过滤后的交易（prompt2）计算
+	// 验证 7: SharpeRatio 应该基于过滤后的交易（prompt2）计算
 	// prompt2 的两笔交易都是亏损，SharpeRatio 应该是负数或0
 	// 这里我们只验证 SharpeRatio 确实被计算了（不是混合数据）
 	// 更详细的测试在 TestSharpeRatioFromFilteredTrades 中
-	t.Logf("   Filtered SharpeRatio: %.4f", performance.SharpeRatio)
+	t.Logf("   Filtered SharpeRatio: %.4f", performanceFiltered.SharpeRatio)
 
 	t.Logf("✅ GetPerformanceWithCache correctly filters by current PromptHash:")
 	t.Logf("   Total trades in cache: 5 (3 from prompt1, 2 from prompt2)")
 	t.Logf("   Current PromptHash: %s (prompt2)", promptHash2)
-	t.Logf("   Filtered TotalTrades: %d", performance.TotalTrades)
-	t.Logf("   Filtered WinRate: %.2f%%", performance.WinRate)
+	t.Logf("   Filtered TotalTrades: %d", performanceFiltered.TotalTrades)
+	t.Logf("   Filtered WinRate: %.2f%%", performanceFiltered.WinRate)
 }
 
 // TestSharpeRatioFromFilteredTrades 验证 SharpeRatio 基于过滤后的交易计算
@@ -1853,10 +1870,21 @@ func TestSharpeRatioFromFilteredTrades(t *testing.T) {
 		}
 	}
 
-	// === 获取 performance（应该基于 prompt2） ===
-	performance, err := logger.GetPerformanceWithCache(100, false)
+	// === 验证 1: 不过滤时应该返回所有交易 ===
+	performanceAll, err := logger.GetPerformanceWithCache(100, false)
 	if err != nil {
-		t.Fatalf("❌ GetPerformanceWithCache failed: %v", err)
+		t.Fatalf("❌ GetPerformanceWithCache (no filter) failed: %v", err)
+	}
+
+	// 验证：不过滤时应该返回所有 6 笔交易（3 from prompt1 + 3 from prompt2）
+	if performanceAll.TotalTrades != 6 {
+		t.Errorf("❌ Expected TotalTrades = 6 (all trades), got %d", performanceAll.TotalTrades)
+	}
+
+	// === 验证 2: 过滤时应该只返回 prompt2 的交易 ===
+	performance, err := logger.GetPerformanceWithCache(100, true)
+	if err != nil {
+		t.Fatalf("❌ GetPerformanceWithCache (filtered) failed: %v", err)
 	}
 
 	// 验证：当前显示的是 prompt2 的数据
@@ -2078,6 +2106,173 @@ func TestDecisionActionNewFields(t *testing.T) {
 		}
 		if records[0].Decisions[2].ClosePercentage != 50.0 {
 			t.Errorf("Decision 2: Expected ClosePercentage = 50.0, got %.2f", records[0].Decisions[2].ClosePercentage)
+		}
+	})
+}
+
+// TestCacheRecoveryAfterRestart 测试服务重启后缓存能正确恢复
+// 这是 Issue #43 的测试用例
+func TestCacheRecoveryAfterRestart(t *testing.T) {
+	t.Run("cache and open positions recover after restart", func(t *testing.T) {
+		// 创建临时目录
+		tempDir := t.TempDir()
+
+		// === 阶段1: 模拟服务运行,产生一些交易 ===
+		logger1 := NewDecisionLogger(tempDir).(*DecisionLogger)
+
+		// 开仓 BTC short
+		record1 := &DecisionRecord{
+			Timestamp: time.Now().Add(-2 * time.Hour),
+			Exchange:  "hyperliquid",
+			Success:   true,
+			PromptHash: "hash_v1",
+			Decisions: []DecisionAction{
+				{
+					Action:    "open_short",
+					Symbol:    "BTCUSDT",
+					Quantity:  0.01,
+					Price:     50000,
+					Leverage:  5,
+					Timestamp: time.Now().Add(-2 * time.Hour),
+					Success:   true,
+				},
+			},
+		}
+		if err := logger1.LogDecision(record1); err != nil {
+			t.Fatalf("Failed to log decision 1: %v", err)
+		}
+
+		// 开仓 ETH long
+		record2 := &DecisionRecord{
+			Timestamp: time.Now().Add(-90 * time.Minute),
+			Exchange:  "hyperliquid",
+			Success:   true,
+			PromptHash: "hash_v1",
+			Decisions: []DecisionAction{
+				{
+					Action:    "open_long",
+					Symbol:    "ETHUSDT",
+					Quantity:  1.0,
+					Price:     3000,
+					Leverage:  3,
+					Timestamp: time.Now().Add(-90 * time.Minute),
+					Success:   true,
+				},
+			},
+		}
+		if err := logger1.LogDecision(record2); err != nil {
+			t.Fatalf("Failed to log decision 2: %v", err)
+		}
+
+		// 平仓 BTC (产生第1笔交易)
+		record3 := &DecisionRecord{
+			Timestamp: time.Now().Add(-80 * time.Minute),
+			Exchange:  "hyperliquid",
+			Success:   true,
+			PromptHash: "hash_v1",
+			Decisions: []DecisionAction{
+				{
+					Action:    "close_short",
+					Symbol:    "BTCUSDT",
+					Price:     49000,
+					Timestamp: time.Now().Add(-80 * time.Minute),
+					Success:   true,
+				},
+			},
+		}
+		if err := logger1.LogDecision(record3); err != nil {
+			t.Fatalf("Failed to log decision 3: %v", err)
+		}
+
+		// 验证 logger1 的状态
+		trades1 := logger1.GetRecentTrades(10)
+		if len(trades1) != 1 {
+			t.Fatalf("Logger1: Expected 1 trade in cache, got %d", len(trades1))
+		}
+
+		// === 阶段2: 模拟服务重启 ===
+		// 创建新的 logger,此时应该:
+		// 1. 恢复历史 cache (1笔已平仓的交易)
+		// 2. 恢复未平仓的持仓 (ETH long)
+		logger2 := NewDecisionLogger(tempDir).(*DecisionLogger)
+
+		// 验证 cache 被正确恢复
+		trades2 := logger2.GetRecentTrades(10)
+		if len(trades2) != 1 {
+			t.Fatalf("After restart: Expected 1 trade in cache, got %d", len(trades2))
+		}
+		if trades2[0].Symbol != "BTCUSDT" {
+			t.Errorf("Expected BTCUSDT trade, got %s", trades2[0].Symbol)
+		}
+
+		// 验证未平仓持仓被正确恢复
+		logger2.positionMutex.RLock()
+		if len(logger2.openPositions) != 1 {
+			t.Fatalf("After restart: Expected 1 open position, got %d", len(logger2.openPositions))
+		}
+		ethPos, exists := logger2.openPositions["ETHUSDT"]
+		if !exists {
+			t.Fatal("ETH position not recovered")
+		}
+		if ethPos.EntryPrice != 3000 {
+			t.Errorf("ETH EntryPrice: expected 3000, got %.2f", ethPos.EntryPrice)
+		}
+		if ethPos.Side != "long" {
+			t.Errorf("ETH Side: expected long, got %s", ethPos.Side)
+		}
+		logger2.positionMutex.RUnlock()
+
+		// === 阶段3: 重启后继续交易,验证 cache 能正确更新 ===
+		// 平仓 ETH (应该能找到重启前的开仓记录)
+		record4 := &DecisionRecord{
+			Timestamp: time.Now(),
+			Exchange:  "hyperliquid",
+			Success:   true,
+			PromptHash: "hash_v1",
+			Decisions: []DecisionAction{
+				{
+					Action:    "close_long",
+					Symbol:    "ETHUSDT",
+					Price:     3100,
+					Timestamp: time.Now(),
+					Success:   true,
+				},
+			},
+		}
+		if err := logger2.LogDecision(record4); err != nil {
+			t.Fatalf("Failed to log decision 4: %v", err)
+		}
+
+		// 验证交易被正确添加到 cache
+		trades3 := logger2.GetRecentTrades(10)
+		if len(trades3) != 2 {
+			t.Fatalf("After close: Expected 2 trades in cache, got %d", len(trades3))
+		}
+
+		// 最新的交易应该是 ETH
+		ethTrade := trades3[0]
+		if ethTrade.Symbol != "ETHUSDT" {
+			t.Errorf("Expected ETHUSDT as latest trade, got %s", ethTrade.Symbol)
+		}
+		if ethTrade.Side != "long" {
+			t.Errorf("ETH trade side: expected long, got %s", ethTrade.Side)
+		}
+		if ethTrade.OpenPrice != 3000 {
+			t.Errorf("ETH OpenPrice: expected 3000, got %.2f", ethTrade.OpenPrice)
+		}
+		if ethTrade.ClosePrice != 3100 {
+			t.Errorf("ETH ClosePrice: expected 3100, got %.2f", ethTrade.ClosePrice)
+		}
+
+		// 验证 PnL (long: profit when price goes up, minus fees)
+		// entry 3000, close 3100, quantity 1.0
+		// gross_pnl = quantity * (close - entry) = 1.0 * (3100 - 3000) = 100
+		// fees = (quantity * entry * fee_rate) + (quantity * close * fee_rate)
+		//      = (1.0 * 3000 * 0.00045) + (1.0 * 3100 * 0.00045) = 1.35 + 1.395 = 2.745
+		// net_pnl = gross_pnl - fees = 100 - 2.745 = 97.255
+		expectedPnL := 97.255
+		if ethTrade.PnL < expectedPnL-0.1 || ethTrade.PnL > expectedPnL+0.1 {
+			t.Errorf("ETH PnL: expected ~%.2f, got %.2f", expectedPnL, ethTrade.PnL)
 		}
 	})
 }
