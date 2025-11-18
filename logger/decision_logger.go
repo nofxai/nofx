@@ -158,7 +158,7 @@ func NewDecisionLogger(logDir string) IDecisionLogger {
 		fmt.Printf("⚠ 设置日志目录权限失败: %v\n", err)
 	}
 
-	return &DecisionLogger{
+	logger := &DecisionLogger{
 		logDir:        logDir,
 		cycleNumber:   0,
 		tradesCache:   make([]TradeOutcome, 0, 100),
@@ -168,6 +168,11 @@ func NewDecisionLogger(logDir string) IDecisionLogger {
 		maxEquitySize: 200, // 缓存 200 个净值点（足够计算SharpeRatio）
 		openPositions: make(map[string]*OpenPosition),
 	}
+
+	// 🚀 启动时初始化缓存和持仓 (Fix for Issue #43)
+	logger.initializeCacheOnStartup()
+
+	return logger
 }
 
 // SetCycleNumber 设置周期编号（用于回测恢复检查点）
@@ -217,9 +222,10 @@ func (l *DecisionLogger) GetLatestRecords(n int) ([]*DecisionRecord, error) {
 		return nil, fmt.Errorf("读取日志目录失败: %w", err)
 	}
 
-	// 按修改时间排序（最新的在前）
+	// 按文件名排序（文件名包含timestamp和cycle,最新的在前）
+	// 注意: 使用文件名而非修改时间,因为文件名包含精确的时间戳和cycle编号
 	sort.Slice(files, func(i, j int) bool {
-		return files[i].ModTime().After(files[j].ModTime())
+		return files[i].Name() > files[j].Name()
 	})
 
 	// 按修改时间倒序收集（最新的在前）
@@ -466,7 +472,7 @@ func (l *DecisionLogger) AnalyzePerformance(lookbackCycles int) (*PerformanceAna
 	// 为了避免开仓记录在窗口外导致匹配失败，需要先从所有历史记录中找出未平仓的持仓
 	// 获取更多历史记录来构建完整的持仓状态（使用更大的窗口）
 	allRecords, err := l.GetLatestRecords(lookbackCycles * 3) // 扩大3倍窗口
-	if err == nil && len(allRecords) > len(records) {
+	if err == nil && len(allRecords) >= len(records) {
 		// 先从扩大的窗口中收集所有开仓记录
 		for _, record := range allRecords {
 			for _, action := range record.Decisions {
@@ -927,6 +933,111 @@ func (l *DecisionLogger) updateCacheFromDecision(record *DecisionRecord) {
 	}
 }
 
+// recoverOpenPositions 从历史文件恢复未平仓的持仓
+// 在服务启动时调用,确保重启后能正确追踪之前的开仓
+func (l *DecisionLogger) recoverOpenPositions() error {
+	// 获取最近的决策文件（扫描最近500个周期,足够覆盖大部分场景）
+	records, err := l.GetLatestRecords(500)
+	if err != nil {
+		return fmt.Errorf("获取历史记录失败: %w", err)
+	}
+
+	// 追踪每个币种的最后一次操作
+	// key: symbol, value: 最后一次操作及其持仓信息
+	lastAction := make(map[string]*struct {
+		action   string // "open" or "close"
+		position *OpenPosition
+	})
+
+	// 按时间顺序遍历所有记录
+	for _, record := range records {
+		if !record.Success || len(record.Decisions) == 0 {
+			continue
+		}
+
+		for _, decision := range record.Decisions {
+			if !decision.Success {
+				continue
+			}
+
+			switch decision.Action {
+			case "open_long", "open_short":
+				// 记录开仓
+				side := "long"
+				if decision.Action == "open_short" {
+					side = "short"
+				}
+
+				lastAction[decision.Symbol] = &struct {
+					action   string
+					position *OpenPosition
+				}{
+					action: "open",
+					position: &OpenPosition{
+						Symbol:     decision.Symbol,
+						Side:       side,
+						Quantity:   decision.Quantity,
+						EntryPrice: decision.Price,
+						Leverage:   decision.Leverage,
+						OpenTime:   decision.Timestamp,
+						Exchange:   record.Exchange,
+					},
+				}
+
+			case "close_long", "close_short", "auto_close_long", "auto_close_short":
+				// 记录平仓
+				lastAction[decision.Symbol] = &struct {
+					action   string
+					position *OpenPosition
+				}{
+					action: "close",
+				}
+			}
+		}
+	}
+
+	// 恢复所有未平仓的持仓
+	recoveredCount := 0
+	for symbol, action := range lastAction {
+		if action.action == "open" && action.position != nil {
+			l.positionMutex.Lock()
+			l.openPositions[symbol] = action.position
+			l.positionMutex.Unlock()
+			recoveredCount++
+			fmt.Printf("  ✓ 恢复未平仓持仓: %s %s (入场价: %.4f, 开仓时间: %s)\n",
+				symbol, action.position.Side, action.position.EntryPrice, action.position.OpenTime.Format("2006-01-02 15:04:05"))
+		}
+	}
+
+	if recoveredCount > 0 {
+		fmt.Printf("✅ 成功恢复 %d 个未平仓持仓\n", recoveredCount)
+	}
+
+	return nil
+}
+
+// initializeCacheOnStartup 在服务启动时初始化缓存和持仓
+// 解决 Issue #43: 服务重启后缓存丢失的问题
+func (l *DecisionLogger) initializeCacheOnStartup() {
+	fmt.Println("🔄 开始初始化缓存和持仓...")
+
+	// 1. 扫描历史文件填充 tradesCache
+	if _, err := l.AnalyzePerformance(InitialScanCycles); err != nil {
+		fmt.Printf("⚠ 初始化缓存失败: %v\n", err)
+		// 不 return,继续尝试恢复持仓
+	} else {
+		cacheSize := len(l.tradesCache)
+		if cacheSize > 0 {
+			fmt.Printf("✅ 缓存已初始化: %d 笔交易\n", cacheSize)
+		}
+	}
+
+	// 2. 恢复未平仓的持仓到 l.openPositions
+	//    确保后续平仓操作能正确匹配
+	if err := l.recoverOpenPositions(); err != nil {
+		fmt.Printf("⚠ 恢复持仓失败: %v\n", err)
+	}
+}
 
 // filterByPromptHash 过滤交易，只保留匹配指定 PromptHash 的交易
 func filterByPromptHash(trades []TradeOutcome, promptHash string) []TradeOutcome {
