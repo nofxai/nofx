@@ -573,12 +573,23 @@ func (s *Server) hydrateBacktestAIConfig(cfg *backtest.BacktestConfig) error {
 	}
 	cfg.AICfg.Model = strings.TrimSpace(cfg.AICfg.Model)
 
-	if cfg.AICfg.Provider == "custom" {
-		if cfg.AICfg.BaseURL == "" {
-			return fmt.Errorf("自定义AI模型需要配置 API 地址")
-		}
-		if cfg.AICfg.Model == "" {
-			return fmt.Errorf("自定义AI模型需要配置模型名称")
+	// 修复：确保模型名称不为空，为已知的provider设置默认模型
+	if cfg.AICfg.Model == "" {
+		switch cfg.AICfg.Provider {
+		case "deepseek":
+			cfg.AICfg.Model = "deepseek-chat"
+		case "qwen":
+			cfg.AICfg.Model = "qwen3-max"
+		case "custom":
+			// custom provider 需要显式配置模型名称
+			if cfg.AICfg.BaseURL == "" {
+				return fmt.Errorf("自定义AI模型需要配置 API 地址")
+			}
+			if cfg.AICfg.Model == "" {
+				return fmt.Errorf("自定义AI模型需要配置模型名称")
+			}
+		default:
+
 		}
 	}
 
