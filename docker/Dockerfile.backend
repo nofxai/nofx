@@ -15,11 +15,12 @@ ARG TA_LIB_VERSION=0.4.0
 # ──────────────────────────────────────────────────────────────
 FROM alpine:${ALPINE_VERSION} AS ta-lib-builder
 ARG TA_LIB_VERSION
+# 切换国内镜像源（阿里云）
+RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories
 
-RUN apk update && apk add --no-cache \
-    wget tar make gcc g++ musl-dev autoconf automake
+RUN apk update && apk add --no-cache wget tar make gcc g++ musl-dev autoconf automake ca-certificates tzdata
 
-RUN wget http://prdownloads.sourceforge.net/ta-lib/ta-lib-${TA_LIB_VERSION}-src.tar.gz && \
+RUN wget -L https://downloads.sourceforge.net/ta-lib/ta-lib-${TA_LIB_VERSION}-src.tar.gz && \
     tar -xzf ta-lib-${TA_LIB_VERSION}-src.tar.gz && \
     cd ta-lib && \
     if [ "$(uname -m)" = "aarch64" ]; then \
@@ -37,6 +38,8 @@ RUN wget http://prdownloads.sourceforge.net/ta-lib/ta-lib-${TA_LIB_VERSION}-src.
 # Backend Build Stage (Go Application)
 # ──────────────────────────────────────────────────────────────
 FROM golang:${GO_VERSION} AS backend-builder
+# 切换国内源
+RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories
 
 RUN apk update && apk add --no-cache git make gcc g++ musl-dev
 
@@ -55,9 +58,9 @@ RUN CGO_ENABLED=1 GOOS=linux \
 # Runtime Stage (Minimal Executable Environment)
 # ──────────────────────────────────────────────────────────────
 FROM alpine:${ALPINE_VERSION}
-
+RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories
 RUN apk update && apk add --no-cache ca-certificates tzdata
-
+RUN apk add --no-cache curl
 COPY --from=ta-lib-builder /usr/local /usr/local
 WORKDIR /app
 COPY --from=backend-builder /app/nofx .
