@@ -144,12 +144,14 @@ func TestPromptReloadWithCustomPrompt(t *testing.T) {
 	}
 }
 
-// TestPromptReloadFallback 测试模板不存在时的降级机制
+// TestPromptReloadFallback 测试模板不存在时的致命错误机制
 func TestPromptReloadFallback(t *testing.T) {
-	// 保存原始的 promptsDir
+	// 保存原始的 promptsDir 和 fatalFunc
 	originalDir := promptsDir
+	originalFatal := fatalFunc
 	defer func() {
 		promptsDir = originalDir
+		fatalFunc = originalFatal
 		globalPromptManager.ReloadTemplates(originalDir)
 	}()
 
@@ -167,17 +169,25 @@ func TestPromptReloadFallback(t *testing.T) {
 		t.Fatalf("加载失败: %v", err)
 	}
 
-	// 测试1: 请求不存在的模板，应该降级到 default
-	result := buildSystemPrompt(10000.0, 10, 5, "nonexistent")
-	if !strings.Contains(result, defaultContent) {
-		t.Errorf("请求不存在的模板时，未降级到 default")
+	// 测试1: 请求不存在的模板，应该触发 fatal
+	var fatalCalled bool
+	fatalFunc = func(format string, v ...interface{}) {
+		fatalCalled = true
+		panic("fatal called")
 	}
 
-	// 测试2: 空模板名，应该使用 default
-	result = buildSystemPrompt(10000.0, 10, 5, "")
-	if !strings.Contains(result, defaultContent) {
-		t.Errorf("空模板名时，未使用 default")
-	}
+	defer func() {
+		if r := recover(); r != nil {
+			if !fatalCalled {
+				t.Error("Expected fatalFunc to be called for nonexistent template")
+			}
+		} else {
+			t.Error("Expected panic from fatalFunc for nonexistent template")
+		}
+	}()
+
+	// 这将触发 fatal
+	buildSystemPrompt(10000.0, 10, 5, "nonexistent")
 }
 
 // TestConcurrentPromptReload 测试并发场景下的 prompt 重新加载

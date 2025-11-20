@@ -5,6 +5,7 @@ import { api } from '../lib/api'
 import { EquityChart } from '../components/EquityChart'
 import AILearning from '../components/AILearning'
 import RecordLimitSelector from '../components/RecordLimitSelector'
+import FilterToggle from '../components/FilterToggle'
 import { useLanguage } from '../contexts/LanguageContext'
 import { useAuth } from '../contexts/AuthContext'
 import { t, type Language } from '../i18n/translations'
@@ -61,10 +62,22 @@ export default function TraderDashboard() {
     return saved ? parseInt(saved, 10) : 5
   })
 
+  // 过滤器状态：只显示有操作的决策（从 localStorage 读取，默认 false）
+  const [showOnlyWithActions, setShowOnlyWithActions] = useState<boolean>(() => {
+    const saved = localStorage.getItem('showOnlyWithActions')
+    return saved ? JSON.parse(saved) : false
+  })
+
   // 当 limit 变化时保存到 localStorage
   const handleLimitChange = (newLimit: number) => {
     setDecisionLimit(newLimit)
     localStorage.setItem('decisionLimit', newLimit.toString())
+  }
+
+  // 当过滤器状态变化时保存到 localStorage
+  const handleFilterChange = (enabled: boolean) => {
+    setShowOnlyWithActions(enabled)
+    localStorage.setItem('showOnlyWithActions', JSON.stringify(enabled))
   }
 
   // 获取trader列表（仅在用户登录时）
@@ -125,9 +138,9 @@ export default function TraderDashboard() {
 
   const { data: decisions } = useSWR<DecisionRecord[]>(
     user && token && selectedTraderId
-      ? `decisions/latest-${selectedTraderId}-${decisionLimit}`
+      ? `decisions/latest-${selectedTraderId}-${decisionLimit}-${showOnlyWithActions}`
       : null,
-    () => api.getLatestDecisions(selectedTraderId, decisionLimit),
+    () => api.getLatestDecisions(selectedTraderId, decisionLimit, showOnlyWithActions),
     {
       refreshInterval: 30000,
       revalidateOnFocus: false,
@@ -622,12 +635,19 @@ export default function TraderDashboard() {
               </div>
             </div>
 
-            {/* 显示数量选择器 */}
-            <RecordLimitSelector
-              limit={decisionLimit}
-              onLimitChange={handleLimitChange}
-              language={language}
-            />
+            {/* 过滤器和数量选择器 */}
+            <div className="flex items-center gap-2">
+              <FilterToggle
+                enabled={showOnlyWithActions}
+                onChange={handleFilterChange}
+                language={language}
+              />
+              <RecordLimitSelector
+                limit={decisionLimit}
+                onLimitChange={handleLimitChange}
+                language={language}
+              />
+            </div>
           </div>
 
           <div

@@ -18,6 +18,7 @@ import { useSystemConfig } from './hooks/useSystemConfig'
 import { DecisionCard } from './components/DecisionCard'
 import { BacktestPage } from './components/BacktestPage'
 import RecordLimitSelector from './components/RecordLimitSelector'
+import FilterToggle from './components/FilterToggle'
 import type {
   SystemStatus,
   AccountInfo,
@@ -71,10 +72,22 @@ function App() {
     return saved ? parseInt(saved, 10) : 5
   })
 
+  // 过滤器状态（从 localStorage 读取，默认 false）
+  const [showOnlyWithActions, setShowOnlyWithActions] = useState<boolean>(() => {
+    const saved = localStorage.getItem('showOnlyWithActions')
+    return saved ? JSON.parse(saved) : false
+  })
+
   // 当 limit 变化时保存到 localStorage
   const handleLimitChange = (newLimit: number) => {
     setDecisionLimit(newLimit)
     localStorage.setItem('decisionLimit', newLimit.toString())
+  }
+
+  // 当过滤状态变化时保存到 localStorage
+  const handleFilterChange = (enabled: boolean) => {
+    setShowOnlyWithActions(enabled)
+    localStorage.setItem('showOnlyWithActions', JSON.stringify(enabled))
   }
 
   // 监听URL变化，同步页面状态
@@ -173,9 +186,9 @@ function App() {
 
   const { data: decisions } = useSWR<DecisionRecord[]>(
     currentPage === 'trader' && selectedTraderId
-      ? `decisions/latest-${selectedTraderId}-${decisionLimit}`
+      ? `decisions/latest-${selectedTraderId}-${decisionLimit}-${showOnlyWithActions}`
       : null,
-    () => api.getLatestDecisions(selectedTraderId, decisionLimit),
+    () => api.getLatestDecisions(selectedTraderId, decisionLimit, showOnlyWithActions),
     {
       refreshInterval: 30000, // 30秒刷新（决策更新频率较低）
       revalidateOnFocus: false,
@@ -394,6 +407,8 @@ function App() {
             onTraderSelect={setSelectedTraderId}
             decisionLimit={decisionLimit}
             onLimitChange={handleLimitChange}
+            showOnlyWithActions={showOnlyWithActions}
+            onFilterChange={handleFilterChange}
             onNavigateToTraders={() => {
               window.history.pushState({}, '', '/traders')
               setRoute('/traders')
@@ -416,7 +431,7 @@ function App() {
           <p className="mt-1">{t('footerWarning', language)}</p>
           <div className="mt-4">
             <a
-              href="https://github.com/tinkle-community/nofx"
+              href="https://github.com/nofxai/nofx"
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-2 px-3 py-2 rounded text-sm font-semibold transition-all hover:scale-105"
@@ -468,6 +483,8 @@ function TraderDetailsPage({
   onTraderSelect,
   decisionLimit,
   onLimitChange,
+  showOnlyWithActions,
+  onFilterChange,
   onNavigateToTraders,
 }: {
   selectedTrader?: TraderInfo
@@ -477,6 +494,8 @@ function TraderDetailsPage({
   onTraderSelect: (traderId: string) => void
   decisionLimit: number
   onLimitChange: (limit: number) => void
+  showOnlyWithActions: boolean
+  onFilterChange: (enabled: boolean) => void
   onNavigateToTraders: () => void
   status?: SystemStatus
   account?: AccountInfo
@@ -960,12 +979,19 @@ function TraderDetailsPage({
                 </div>
               </div>
 
-              {/* 显示数量选择器 */}
-              <RecordLimitSelector
-                limit={decisionLimit}
-                onLimitChange={onLimitChange}
-                language={language}
-              />
+              {/* 过滤器和数量选择器 */}
+              <div className="flex items-center gap-2">
+                <FilterToggle
+                  enabled={showOnlyWithActions}
+                  onChange={onFilterChange}
+                  language={language}
+                />
+                <RecordLimitSelector
+                  limit={decisionLimit}
+                  onLimitChange={onLimitChange}
+                  language={language}
+                />
+              </div>
             </div>
           </div>
 

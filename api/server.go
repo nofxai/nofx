@@ -1524,7 +1524,13 @@ func (s *Server) handleLatestDecisions(c *gin.Context) {
 		}
 	}
 
-	records, err := trader.GetDecisionLogger().GetLatestRecords(limit)
+	// 从 query 参数读取 only_with_actions，默认 false
+	onlyWithActions := false
+	if filterStr := c.Query("only_with_actions"); filterStr != "" {
+		onlyWithActions = filterStr == "true" || filterStr == "1"
+	}
+
+	records, err := trader.GetDecisionLogger().GetLatestRecordsWithFilter(limit, onlyWithActions)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": fmt.Sprintf("获取决策日志失败: %v", err),

@@ -10,10 +10,22 @@ import (
 	"nofx/market"
 	"nofx/mcp"
 	"nofx/pool"
+	"os"
 	"regexp"
 	"strings"
 	"time"
 )
+
+// fatalFunc 是可替换的致命错误处理函数（仅用于测试）
+// 生产环境永远使用 realFatal，确保系统真正退出
+var fatalFunc = realFatal
+
+// realFatal 真正的致命错误处理（调用 os.Exit）
+// ⚠️ 资金安全关键：当配置错误时，必须阻止系统启动
+func realFatal(format string, v ...interface{}) {
+	log.Printf(format, v...)
+	os.Exit(1) // 进程立即退出
+}
 
 // 预编译正则表达式（性能优化：避免每次调用时重新编译）
 var (
@@ -362,21 +374,16 @@ func buildSystemPrompt(accountEquity float64, btcEthLeverage, altcoinLeverage in
 
 	template, err := GetPromptTemplate(templateName)
 	if err != nil {
-		// 如果模板不存在，记录错误并使用 default
-		log.Printf("⚠️  提示词模板 '%s' 不存在，使用 default: %v", templateName, err)
-		template, err = GetPromptTemplate("default")
-		if err != nil {
-			// 如果连 default 都不存在，使用内置的简化版本
-			log.Printf("❌ 无法加载任何提示词模板，使用内置简化版本")
-			sb.WriteString("你是专业的加密货币交易AI。请根据市场数据做出交易决策。\n\n")
-		} else {
-			sb.WriteString(template.Content)
-			sb.WriteString("\n\n")
-		}
-	} else {
-		sb.WriteString(template.Content)
-		sb.WriteString("\n\n")
+		// 如果模板不存在，列出可用模板并退出系统
+		availableTemplates := GetAllPromptTemplateNames()
+		log.Printf("❌ 致命错误：系统提示词模板 '%s' 不存在", templateName)
+		log.Printf("📋 当前可用的模板列表: %v", availableTemplates)
+		// 使用 fatalFunc（生产环境调用 os.Exit(1)，测试环境可替换）
+		fatalFunc("系统无法启动，请检查交易员配置中的 system_prompt_template 字段")
 	}
+
+	sb.WriteString(template.Content)
+	sb.WriteString("\n\n")
 
 	// 2. 硬约束（风险控制）- 动态生成
 	sb.WriteString("# 硬约束（风险控制）\n\n")

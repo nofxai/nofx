@@ -139,23 +139,9 @@ func TestBuildPromptSnapshot(t *testing.T) {
 		}
 	})
 
-	t.Run("模板不存在应该降级到 default", func(t *testing.T) {
-		// 使用不存在的模板名
-		snapshot := BuildPromptSnapshot(
-			10000.0,
-			5,
-			5,
-			"",
-			false,
-			"non_existent_template",
-		)
-
-		// 应该降级到 default 或内置简化版本
-		// 至少应该有基本的提示词结构
-		if len(snapshot) < 100 {
-			t.Error("即使模板不存在，也应该返回有效的 prompt")
-		}
-	})
+	// 移除旧测试："模板不存在应该降级到 default"
+	// 新行为：模板不存在时系统立即退出（资金安全）
+	// 相关测试：TestBuildSystemPrompt_NonExistentTemplate_ShouldCallFatal (prompt_test.go)
 
 	t.Run("快照应该包含输出格式说明", func(t *testing.T) {
 		snapshot := BuildPromptSnapshot(

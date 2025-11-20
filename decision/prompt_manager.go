@@ -25,11 +25,13 @@ var (
 	// globalPromptManager 全局提示词管理器
 	globalPromptManager *PromptManager
 	// promptsDir 提示词文件夹路径
-	promptsDir = "prompts"
+	promptsDir string
 )
 
 // init 包初始化时加载所有提示词模板
 func init() {
+	promptsDir = "/app/prompts"
+
 	globalPromptManager = NewPromptManager()
 	if err := globalPromptManager.LoadTemplates(promptsDir); err != nil {
 		log.Printf("⚠️  加载提示词模板失败: %v", err)
@@ -95,6 +97,12 @@ func (pm *PromptManager) LoadTemplates(dir string) error {
 func (pm *PromptManager) GetTemplate(name string) (*PromptTemplate, error) {
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
+
+	// 🔒 安全验证：防止路径遍历攻击
+	// 模板名称不应包含路径分隔符或父目录引用
+	if strings.Contains(name, "/") || strings.Contains(name, "\\") || strings.Contains(name, "..") {
+		return nil, fmt.Errorf("非法的模板名称: %s（不允许包含路径分隔符）", name)
+	}
 
 	template, exists := pm.templates[name]
 	if !exists {

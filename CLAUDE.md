@@ -6,6 +6,44 @@
 
 ## 开发流程规则
 
+### 编译和测试检查 - MANDATORY ⚠️🔥
+
+**在提交代码前，必须执行以下检查（按顺序）：**
+
+1. **Go 代码编译检查**（如果修改了 Go 代码）：
+   ```bash
+   go build .
+   ```
+   - ✅ 必须编译通过，无任何错误
+   - ✅ 检查接口定义：如果添加了新方法，确保接口已更新
+   - ❌ 编译失败 = BLOCKING，必须修复
+
+2. **Go 单元测试**（如果修改了 Go 代码）：
+   ```bash
+   go test ./...
+   ```
+   - ✅ 所有测试必须通过
+   - ❌ 任何测试失败 = BLOCKING，必须修复
+
+3. **Frontend 编译检查**（如果修改了 TypeScript/React 代码）：
+   ```bash
+   cd web && npm run build
+   ```
+   - ✅ 必须编译通过，无 TypeScript 类型错误
+   - ❌ 编译失败 = BLOCKING，必须修复
+
+4. **Frontend 单元测试**（如果修改了 TypeScript/React 代码）：
+   ```bash
+   cd web && npm test -- --run
+   ```
+   - ✅ 所有测试必须通过
+   - ❌ 任何测试失败 = BLOCKING，必须修复
+
+**⚠️ 血的教训（2024-11-19）**：
+- 修改 Go 代码但未运行 `go build`，导致 Docker 构建失败
+- 在实现类中添加了方法，但忘记更新接口定义
+- **绝对不允许**提交无法编译的代码！
+
 ### TDD（测试驱动开发）- MANDATORY
 
 **所有开发和 bug 修复，默认使用 TDD 方式：**
@@ -14,12 +52,15 @@
    - ✅ **先写测试**：用测试用例明确需求和预期行为
    - ✅ **运行测试**：确认测试失败（Red）
    - ✅ **实现代码**：让测试通过（Green）
+   - ✅ **验证编译**：运行 `go build .` 或 `npm run build` 确保编译通过
+   - ✅ **运行所有测试**：确保不影响其他功能
    - ✅ **重构优化**：在测试保护下重构（Refactor）
 
 2. **Bug 修复**：
    - ✅ **先写测试**：复现 bug 的测试用例
    - ✅ **确认失败**：测试应该失败，证明 bug 存在
    - ✅ **修复代码**：让测试通过
+   - ✅ **验证编译**：运行编译检查
    - ✅ **验证修复**：确保测试通过且不影响其他测试
 
 3. **测试覆盖率要求**：
@@ -99,6 +140,81 @@
 ⚠️ **永远不要直接提交 PR 到 `main` 分支！**
 - 除非用户明确要求，否则所有 PR 都应该提交到 `next`
 - `main` 分支只接受经过测试和验证的稳定版本
+
+## Git 操作安全规则 - CRITICAL ⚠️🔥
+
+**❌ 绝对禁止的危险操作 - 除非用户明确授权：**
+
+1. **`git reset --hard`** - 会永久丢失未提交的修改！
+2. **`git clean -fd`** - 会永久删除未跟踪的文件！
+3. **`git checkout -- .`** - 会丢弃所有工作区修改！
+4. **`git stash drop`** - 会永久删除 stash 的内容！
+5. **切换分支前未保存工作** - 可能导致修改丢失！
+
+**✅ 正确的工作流程：**
+
+### 查看修改状态
+```bash
+git status                    # 查看当前修改
+git diff                      # 查看未暂存的修改
+git diff --cached             # 查看已暂存的修改
+```
+
+### 保存工作进度
+```bash
+# 方法 1: 提交到当前分支
+git add <files>
+git commit -m "WIP: description"
+
+# 方法 2: 使用 stash（但要注意 stash 也可能丢失）
+git stash push -m "description"
+git stash list                # 确认 stash 成功
+```
+
+### 切换分支的安全流程
+```bash
+# 步骤 1: 检查当前修改
+git status
+
+# 步骤 2a: 如果有修改要保留 → 先提交或 stash
+git add <files>
+git commit -m "WIP: save work before switching"
+
+# 步骤 2b: 如果修改不重要 → 询问用户确认后再丢弃
+# ❌ 绝不自动执行 git reset --hard
+
+# 步骤 3: 切换分支
+git checkout <branch>
+```
+
+### 提交部分文件的正确方式
+```bash
+# ✅ 正确：只 add 需要提交的文件
+git add file1.ts file2.ts
+git commit -m "message"
+
+# ❌ 错误：不要为了"清理工作区"而 reset
+# 这会丢失其他未提交的修改！
+```
+
+### 血的教训（2024-11-19）
+
+**事件：** 在修复 issue #42 时，因为想从 next 分支创建新分支，执行了 `git reset --hard HEAD`，导致：
+- ❌ 丢失了过滤功能的前端修改（api.ts, TraderDashboard.tsx）
+- ❌ 丢失了过滤功能的后端修改（api/server.go, logger/decision_logger.go）
+- ❌ 丢失了 docker-compose.yml 的修改
+- ❌ 这些修改都没有 commit，永久丢失，需要重新实现
+
+**正确做法应该是：**
+1. 在当前分支直接 `git add` 要提交的文件
+2. 提交后再考虑是否需要切换分支
+3. 或者询问用户如何处理其他未提交的修改
+4. **绝不擅自执行任何可能丢失数据的命令**
+
+**核心原则：**
+- 🔴 **宁可多问，绝不擅自重置或删除**
+- 🔴 **保护用户的工作成果是第一优先级**
+- 🔴 **任何破坏性操作都必须得到用户明确授权**
 
 ## 决策规则
 

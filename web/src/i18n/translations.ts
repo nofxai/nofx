@@ -67,6 +67,7 @@ export const translations = {
     newStopLoss: 'New Stop Loss',
     newTakeProfit: 'New Take Profit',
     closePercentage: 'Close Percentage',
+    filterOnlyWithActions: 'Only with actions',
 
     // Equity Chart
     accountEquityCurve: 'Account Equity Curve',
@@ -1086,6 +1087,7 @@ export const translations = {
     newTakeProfit: '新止盈价',
     closePercentage: '平仓比例',
     expand: '▶ 展开',
+    filterOnlyWithActions: '只显示有操作',
 
     // Equity Chart
     accountEquityCurve: '账户净值曲线',

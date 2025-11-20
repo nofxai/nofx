@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 )
@@ -91,6 +92,8 @@ type IDecisionLogger interface {
 	LogDecision(record *DecisionRecord) error
 	// GetLatestRecords 获取最近N条记录（按时间正序：从旧到新）
 	GetLatestRecords(n int) ([]*DecisionRecord, error)
+	// GetLatestRecordsWithFilter 获取最近N条记录，支持过滤只包含操作的记录
+	GetLatestRecordsWithFilter(n int, onlyWithActions bool) ([]*DecisionRecord, error)
 	// GetRecordByDate 获取指定日期的所有记录
 	GetRecordByDate(date time.Time) ([]*DecisionRecord, error)
 	// CleanOldRecords 清理N天前的旧记录
@@ -246,6 +249,67 @@ func (l *DecisionLogger) GetLatestRecords(n int) ([]*DecisionRecord, error) {
 		var record DecisionRecord
 		if err := json.Unmarshal(data, &record); err != nil {
 			continue
+		}
+
+		records = append(records, &record)
+		count++
+	}
+
+	// 反转数组，让时间从旧到新排列（用于图表显示）
+	for i, j := 0, len(records)-1; i < j; i, j = i+1, j-1 {
+		records[i], records[j] = records[j], records[i]
+	}
+
+	return records, nil
+}
+
+// GetLatestRecordsWithFilter 获取最近的N条决策记录，支持过滤只包含操作的记录
+func (l *DecisionLogger) GetLatestRecordsWithFilter(n int, onlyWithActions bool) ([]*DecisionRecord, error) {
+	files, err := ioutil.ReadDir(l.logDir)
+	if err != nil {
+		return nil, fmt.Errorf("读取日志目录失败: %w", err)
+	}
+
+	// 按文件名排序（文件名包含timestamp和cycle,最新的在前）
+	sort.Slice(files, func(i, j int) bool {
+		return files[i].Name() > files[j].Name()
+	})
+
+	// 按修改时间倒序收集（最新的在前）
+	var records []*DecisionRecord
+	count := 0
+
+	for i := 0; i < len(files) && count < n; i++ {
+		file := files[i]
+		if file.IsDir() {
+			continue
+		}
+
+		filepath := filepath.Join(l.logDir, file.Name())
+		data, err := ioutil.ReadFile(filepath)
+		if err != nil {
+			continue
+		}
+
+		var record DecisionRecord
+		if err := json.Unmarshal(data, &record); err != nil {
+			continue
+		}
+
+		// 如果启用过滤，只保留有实际交易操作的记录
+		if onlyWithActions {
+			hasRealAction := false
+			for _, decision := range record.Decisions {
+				// 检查是否有真实的交易操作（非 hold/wait）
+				action := strings.ToLower(decision.Action)
+				if action != "hold" && action != "wait" {
+					hasRealAction = true
+					break
+				}
+			}
+			if !hasRealAction {
+				continue
+			}
 		}
 
 		records = append(records, &record)

@@ -298,16 +298,20 @@ export const api = {
     return res.json()
   },
 
-  // 获取最新决策（支持trader_id和limit参数）
+  // 获取最新决策（支持trader_id、limit和onlyWithActions参数）
   async getLatestDecisions(
     traderId?: string,
-    limit: number = 5
+    limit: number = 5,
+    onlyWithActions?: boolean
   ): Promise<DecisionRecord[]> {
     const params = new URLSearchParams()
     if (traderId) {
       params.append('trader_id', traderId)
     }
     params.append('limit', limit.toString())
+    if (onlyWithActions === true) {
+      params.append('only_with_actions', 'true')
+    }
 
     const res = await httpClient.get(
       `${API_BASE}/decisions/latest?${params}`,
