@@ -28,15 +28,33 @@ var (
 	promptsDir string
 )
 
+// getPromptsDir 获取提示词目录路径
+// 优先级：环境变量 PROMPTS_DIR > 相对路径 ./prompts > Docker 路径 /app/prompts
+func getPromptsDir() string {
+	// 1. 尝试从环境变量获取
+	if dir := os.Getenv("PROMPTS_DIR"); dir != "" {
+		return dir
+	}
+
+	// 2. 尝试使用相对路径（适用于本地开发）
+	relPath := "./prompts"
+	if _, err := os.Stat(relPath); err == nil {
+		return relPath
+	}
+
+	// 3. 使用 Docker 默认路径
+	return "/app/prompts"
+}
+
 // init 包初始化时加载所有提示词模板
 func init() {
-	promptsDir = "/app/prompts"
+	promptsDir = getPromptsDir()
 
 	globalPromptManager = NewPromptManager()
 	if err := globalPromptManager.LoadTemplates(promptsDir); err != nil {
 		log.Printf("⚠️  加载提示词模板失败: %v", err)
 	} else {
-		log.Printf("✓ 已加载 %d 个系统提示词模板", len(globalPromptManager.templates))
+		log.Printf("✓ 已加载 %d 个系统提示词模板 (from %s)", len(globalPromptManager.templates), promptsDir)
 	}
 }
 

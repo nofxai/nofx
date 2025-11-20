@@ -283,3 +283,71 @@ func TestReloadPromptTemplates_GlobalFunction(t *testing.T) {
 		t.Errorf("模板内容不正确: got %s, want '测试内容'", template.Content)
 	}
 }
+
+func TestGetPromptsDir(t *testing.T) {
+	tests := []struct {
+		name       string
+		envValue   string
+		expectPath string
+	}{
+		{
+			name:       "使用环境变量 PROMPTS_DIR",
+			envValue:   "/custom/prompts/path",
+			expectPath: "/custom/prompts/path",
+		},
+		{
+			name:       "环境变量为空，使用默认相对路径",
+			envValue:   "",
+			expectPath: "./prompts",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// 设置环境变量
+			if tt.envValue != "" {
+				os.Setenv("PROMPTS_DIR", tt.envValue)
+				defer os.Unsetenv("PROMPTS_DIR")
+			} else {
+				os.Unsetenv("PROMPTS_DIR")
+			}
+
+			got := getPromptsDir()
+			if got != tt.expectPath {
+				t.Errorf("getPromptsDir() = %v, want %v", got, tt.expectPath)
+			}
+		})
+	}
+}
+
+func TestPromptManagerWithCustomPath(t *testing.T) {
+	// 创建临时目录
+	tempDir := t.TempDir()
+
+	// 创建测试文件
+	testFile := filepath.Join(tempDir, "custom.txt")
+	if err := os.WriteFile(testFile, []byte("自定义路径的模板"), 0644); err != nil {
+		t.Fatalf("创建测试文件失败: %v", err)
+	}
+
+	// 设置环境变量
+	os.Setenv("PROMPTS_DIR", tempDir)
+	defer os.Unsetenv("PROMPTS_DIR")
+
+	// 创建新的 PromptManager 并加载
+	pm := NewPromptManager()
+	dir := getPromptsDir()
+	if err := pm.LoadTemplates(dir); err != nil {
+		t.Fatalf("加载模板失败: %v", err)
+	}
+
+	// 验证模板已加载
+	template, err := pm.GetTemplate("custom")
+	if err != nil {
+		t.Fatalf("获取模板失败: %v", err)
+	}
+
+	if template.Content != "自定义路径的模板" {
+		t.Errorf("模板内容不正确: got %s, want '自定义路径的模板'", template.Content)
+	}
+}
