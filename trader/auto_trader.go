@@ -491,9 +491,6 @@ func (at *AutoTrader) runCycle() error {
 		}
 	}
 	log.Println()
-	log.Print(strings.Repeat("-", 70))
-	// 8. 对决策排序：确保先平仓后开仓（防止仓位叠加超限）
-	log.Print(strings.Repeat("-", 70))
 
 	// 8. 对决策排序：确保先平仓后开仓（防止仓位叠加超限）
 	sortedDecisions := sortDecisionsByPriority(decision.Decisions)
