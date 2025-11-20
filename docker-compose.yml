@@ -10,11 +10,11 @@ services:
     build:
       context: .
       dockerfile: ./docker/Dockerfile.backend
-    container_name: nofx-trading
+    container_name: nofx-next-trading
     restart: unless-stopped
     stop_grace_period: 30s  # 允许应用有 30 秒时间优雅关闭
     ports:
-      - "${NOFX_BACKEND_PORT:-8080}:8080"
+      - "${NOFX_BACKEND_PORT:-8081}:8081"
     volumes:
       - ./config.json:/app/config.json:ro  # 基础配置文件（杠杆、风控参数等，只读）
       - ./config.db:/app/config.db  # 🔥 核心资产：系统配置数据库（交易员配置、API密钥、用户数据等）
@@ -27,13 +27,13 @@ services:
       - /etc/localtime:/etc/localtime:ro  # 同步宿主机时区
     environment:
       - TZ=${NOFX_TIMEZONE:-Asia/Shanghai}  # Set timezone
-      - AI_MAX_TOKENS=4000  # AI响应的最大token数（默认2000，建议4000-8000）
+      - AI_MAX_TOKENS=8000  # AI响应的最大token数（默认2000，建议4000-8000）
       - DATA_ENCRYPTION_KEY=${DATA_ENCRYPTION_KEY}  # 数据库加密密钥
       - JWT_SECRET=${JWT_SECRET}  # JWT认证密钥
     networks:
       - nofx-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8081/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -44,16 +44,16 @@ services:
     build:
       context: .
       dockerfile: ./docker/Dockerfile.frontend
-    container_name: nofx-frontend
+    container_name: nofx-next-frontend
     restart: unless-stopped
     ports:
-      - "${NOFX_FRONTEND_PORT:-3000}:80"
+      - "${NOFX_FRONTEND_PORT:-3001}:80"
     networks:
       - nofx-network
     depends_on:
       - nofx
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://127.0.0.1/health"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1/health"]
       interval: 30s
       timeout: 10s
       retries: 3

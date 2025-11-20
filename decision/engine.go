@@ -55,9 +55,9 @@ type PositionInfo struct {
 	PeakPnLPct       float64 `json:"peak_pnl_pct"` // 历史最高收益率（百分比）
 	LiquidationPrice float64 `json:"liquidation_price"`
 	MarginUsed       float64 `json:"margin_used"`
-	UpdateTime       int64   `json:"update_time"` // 持仓更新时间戳（毫秒）
-	StopLoss         float64 `json:"stop_loss,omitempty"`         // 止损价格（用于推断平仓原因）
-	TakeProfit       float64 `json:"take_profit,omitempty"`       // 止盈价格（用于推断平仓原因）
+	UpdateTime       int64   `json:"update_time"`           // 持仓更新时间戳（毫秒）
+	StopLoss         float64 `json:"stop_loss,omitempty"`   // 止损价格（用于推断平仓原因）
+	TakeProfit       float64 `json:"take_profit,omitempty"` // 止盈价格（用于推断平仓原因）
 }
 
 // AccountInfo 账户信息
@@ -676,6 +676,7 @@ func extractDecisions(response string) ([]Decision, error) {
 	if err := validateJSONFormat(jsonContent); err != nil {
 		return nil, fmt.Errorf("JSON格式验证失败: %w\nJSON内容: %s\n完整响应:\n%s", err, jsonContent, response)
 	}
+	log.Println("JSON内容:%s", jsonContent)
 
 	// 解析JSON
 	var decisions []Decision

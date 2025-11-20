@@ -348,7 +348,7 @@ func main() {
 	fmt.Println()
 
 	// 获取API服务器端口（优先级：环境变量 > 数据库配置 > 默认值）
-	apiPort := 8080 // 默认端口
+	apiPort := 8081 // 默认端口
 
 	// 1. 优先从环境变量 NOFX_BACKEND_PORT 读取
 	if envPort := strings.TrimSpace(os.Getenv("NOFX_BACKEND_PORT")); envPort != "" {
