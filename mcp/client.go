@@ -18,7 +18,7 @@ const (
 )
 
 var (
-	DefaultTimeout = 120 * time.Second
+	DefaultTimeout = 180 * time.Second
 )
 
 // Client AI API配置

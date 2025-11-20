@@ -97,8 +97,8 @@ type AutoTrader struct {
 	lastResetTime         time.Time
 	stopUntil             time.Time
 	isRunning             bool
-	startTime             time.Time          // 系统启动时间
-	callCount             int                // AI调用次数
+	startTime             time.Time                        // 系统启动时间
+	callCount             int                              // AI调用次数
 	positionFirstSeenTime map[string]int64                 // 持仓首次出现时间 (symbol_side -> timestamp毫秒)
 	lastPositions         map[string]decision.PositionInfo // 上一次周期的持仓快照 (用于检测被动平仓)
 	positionStopLoss      map[string]float64               // 持仓止损价格 (symbol_side -> stop_loss_price)
@@ -405,7 +405,7 @@ func (at *AutoTrader) runCycle() error {
 				closed.Symbol,
 				closed.Side,
 				closed.EntryPrice,
-				action.Price,    // 使用真实成交价格（已矫正）
+				action.Price, // 使用真实成交价格（已矫正）
 				pnlPct,
 				reasonCN)
 		}
@@ -468,28 +468,28 @@ func (at *AutoTrader) runCycle() error {
 	}
 
 	// // 5. 打印系统提示词
-	// log.Printf("\n" + strings.Repeat("=", 70))
-	// log.Printf("📋 系统提示词 [模板: %s]", at.systemPromptTemplate)
-	// log.Println(strings.Repeat("=", 70))
-	// log.Println(decision.SystemPrompt)
-	// log.Printf(strings.Repeat("=", 70) + "\n")
+	log.Printf("\n" + strings.Repeat("=", 70))
+	log.Printf("📋 系统提示词 [模板: %s]", at.systemPromptTemplate)
+	log.Println(strings.Repeat("=", 70))
+	log.Println(decision.SystemPrompt)
+	log.Printf(strings.Repeat("=", 70) + "\n")
 
 	// 6. 打印AI思维链
-	// log.Printf("\n" + strings.Repeat("-", 70))
-	// log.Println("💭 AI思维链分析:")
-	// log.Println(strings.Repeat("-", 70))
-	// log.Println(decision.CoTTrace)
-	// log.Printf(strings.Repeat("-", 70) + "\n")
+	log.Printf("\n" + strings.Repeat("-", 70))
+	log.Println("💭 AI思维链分析:")
+	log.Println(strings.Repeat("-", 70))
+	log.Println(decision.CoTTrace)
+	log.Printf(strings.Repeat("-", 70) + "\n")
 
 	// 7. 打印AI决策
-	// log.Printf("📋 AI决策列表 (%d 个):\n", len(decision.Decisions))
-	// for i, d := range decision.Decisions {
-	//     log.Printf("  [%d] %s: %s - %s", i+1, d.Symbol, d.Action, d.Reasoning)
-	//     if d.Action == "open_long" || d.Action == "open_short" {
-	//        log.Printf("      杠杆: %dx | 仓位: %.2f USDT | 止损: %.4f | 止盈: %.4f",
-	//           d.Leverage, d.PositionSizeUSD, d.StopLoss, d.TakeProfit)
-	//     }
-	// }
+	log.Printf("📋 AI决策列表 (%d 个):\n", len(decision.Decisions))
+	for i, d := range decision.Decisions {
+		log.Printf("  [%d] %s: %s - %s", i+1, d.Symbol, d.Action, d.Reasoning)
+		if d.Action == "open_long" || d.Action == "open_short" {
+			log.Printf("      杠杆: %dx | 仓位: %.2f USDT | 止损: %.4f | 止盈: %.4f",
+				d.Leverage, d.PositionSizeUSD, d.StopLoss, d.TakeProfit)
+		}
+	}
 	log.Println()
 	log.Print(strings.Repeat("-", 70))
 	// 8. 对决策排序：确保先平仓后开仓（防止仓位叠加超限）
@@ -687,7 +687,7 @@ func (at *AutoTrader) buildTradingContext() (*decision.Context, error) {
 		CurrentTime:     time.Now().Format("2006-01-02 15:04:05"),
 		RuntimeMinutes:  int(time.Since(at.startTime).Minutes()),
 		CallCount:       at.callCount,
-		Exchange:        at.exchange,                // 交易所名称
+		Exchange:        at.exchange,               // 交易所名称
 		BTCETHLeverage:  at.config.BTCETHLeverage,  // 使用配置的杠杆倍数
 		AltcoinLeverage: at.config.AltcoinLeverage, // 使用配置的杠杆倍数
 		Account: decision.AccountInfo{
@@ -1855,11 +1855,11 @@ func (at *AutoTrader) generateAutoCloseActions(closedPositions []decision.Positi
 			Symbol:    pos.Symbol,
 			Quantity:  pos.Quantity,
 			Leverage:  pos.Leverage,
-			Price:     closePrice,    // 推断的平仓价格（止损/止盈/强平/市价）
-			OrderID:   0,             // 自动平仓没有订单ID
-			Timestamp: time.Now(),    // 检测时间（非真实触发时间）
+			Price:     closePrice, // 推断的平仓价格（止损/止盈/强平/市价）
+			OrderID:   0,          // 自动平仓没有订单ID
+			Timestamp: time.Now(), // 检测时间（非真实触发时间）
 			Success:   true,
-			Error:     closeReason,   // 使用 Error 字段存储平仓原因（stop_loss/take_profit/liquidation/manual/unknown）
+			Error:     closeReason, // 使用 Error 字段存储平仓原因（stop_loss/take_profit/liquidation/manual/unknown）
 		})
 	}
 
