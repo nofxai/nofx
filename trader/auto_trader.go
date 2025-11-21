@@ -455,10 +455,8 @@ func (at *AutoTrader) runCycle() error {
 			record.DecisionJSON = string(decisionJSON)
 			log.Printf("AI决策列表-%s \n", record.DecisionJSON)
 			for i, d := range decision.Decisions {
-				log.Printf("AI决策项-[%d] %s: %s - ", i+1, d.Symbol, d.Action)
-				log.Printf("杠杆: %dx | 仓位: %.2f USDT | 止损: %.4f | 止盈: %.4f \n",
+				log.Printf("AI决策项-[%d] %s: %s - 杠杆: %dx | 仓位: %.2f USDT | 止损: %.4f | 止盈: %.4f \n", i+1, d.Symbol, d.Action,
 					d.Leverage, d.PositionSizeUSD, d.StopLoss, d.TakeProfit)
-
 			}
 		}
 	}

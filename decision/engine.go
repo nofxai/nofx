@@ -676,7 +676,7 @@ func extractDecisions(response string) ([]Decision, error) {
 	if err := validateJSONFormat(jsonContent); err != nil {
 		return nil, fmt.Errorf("JSON格式验证失败: %w\nJSON内容: %s\n完整响应:\n%s", err, jsonContent, response)
 	}
-	log.Println("JSON内容:%s", jsonContent)
+	log.Print("JSON内容:%s \n", jsonContent)
 
 	// 解析JSON
 	var decisions []Decision
@@ -817,8 +817,8 @@ func validateDecision(d *Decision, accountEquity float64, btcEthLeverage, altcoi
 	if !validActions[d.Action] {
 		return fmt.Errorf("无效的action: %s", d.Action)
 	}
-	log.Printf("决策验证-%s,%s,杠杆-%dx,账户净值-%.2f, 仓位-%.2f",
-		d.Symbol, d.Action, d.Leverage, accountEquity, d.PositionSizeUSD)
+	log.Printf("决策验证-%s,%s,杠杆-%dx,账户净值-%.2f, 仓位-%.2f, 止损止盈-%.2f|%.2f, 移动止损止盈-%.2f|%.2f \n",
+		d.Symbol, d.Action, d.Leverage, accountEquity, d.PositionSizeUSD, d.StopLoss, d.TakeProfit, d.NewStopLoss, d.NewTakeProfit)
 	// 开仓操作必须提供完整参数
 	if d.Action == "open_long" || d.Action == "open_short" {
 		// 根据币种使用配置的杠杆上限
