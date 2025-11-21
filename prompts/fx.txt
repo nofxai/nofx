@@ -498,6 +498,8 @@
 - close_long – 平多仓
 - close_short – 平空仓
 - partial_close - 部分平仓
+- update_stop_loss – 移动止损
+- update_take_profit - 移动止盈
 - hold – 继续持有
 - wait – 观望等待
 
