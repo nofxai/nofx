@@ -436,6 +436,12 @@ func (at *AutoTrader) runCycle() error {
 		log.Printf("⏱️ AI调用耗时: %.2f 秒", float64(record.AIRequestDurationMs)/1000)
 		record.ExecutionLog = append(record.ExecutionLog,
 			fmt.Sprintf("AI调用耗时: %d ms", record.AIRequestDurationMs))
+
+		// 7. 打印AI决策
+		log.Printf("📋 AI决策列表 (%d 个):\n", len(decision.Decisions))
+		log.Printf("AI决策前,账户净值: %.2f USDT | 可用: %.2f USDT | 持仓数: %d \n",
+			ctx.Account.TotalEquity, ctx.Account.AvailableBalance, ctx.Account.PositionCount)
+
 	}
 
 	// 即使有错误，也保存思维链、决策和输入prompt（用于debug）
@@ -447,6 +453,13 @@ func (at *AutoTrader) runCycle() error {
 		if len(decision.Decisions) > 0 {
 			decisionJSON, _ := json.MarshalIndent(decision.Decisions, "", "  ")
 			record.DecisionJSON = string(decisionJSON)
+			log.Printf("AI决策列表-%s \n", record.DecisionJSON)
+			for i, d := range decision.Decisions {
+				log.Printf("AI决策项-[%d] %s: %s - ", i+1, d.Symbol, d.Action)
+				log.Printf("杠杆: %dx | 仓位: %.2f USDT | 止损: %.4f | 止盈: %.4f \n",
+					d.Leverage, d.PositionSizeUSD, d.StopLoss, d.TakeProfit)
+
+			}
 		}
 	}
 
@@ -476,28 +489,18 @@ func (at *AutoTrader) runCycle() error {
 	}
 
 	// // 5. 打印系统提示词
-	log.Printf("\n" + strings.Repeat("=", 70))
-	log.Printf("📋 系统提示词 [模板: %s]", at.systemPromptTemplate)
-	log.Println(strings.Repeat("=", 70))
-	log.Println(decision.SystemPrompt)
-	log.Printf(strings.Repeat("=", 70) + "\n")
+	//log.Printf("\n" + strings.Repeat("=", 70))
+	//log.Printf("📋 系统提示词 [模板: %s]", at.systemPromptTemplate)
+	//log.Println(strings.Repeat("=", 70))
+	//log.Println(decision.SystemPrompt)
+	//log.Printf(strings.Repeat("=", 70) + "\n")
 
 	// 6. 打印AI思维链
-	log.Printf("\n" + strings.Repeat("-", 70))
-	log.Println("💭 AI思维链分析:")
-	log.Println(strings.Repeat("-", 70))
-	log.Println(decision.CoTTrace)
-	log.Printf(strings.Repeat("-", 70) + "\n")
-
-	// 7. 打印AI决策
-	log.Printf("📋 AI决策列表 (%d 个):\n", len(decision.Decisions))
-	log.Printf("AI决策前,账户净值: %.2f USDT | 可用: %.2f USDT | 持仓: %d",
-		ctx.Account.TotalEquity, ctx.Account.AvailableBalance, ctx.Account.PositionCount)
-	for i, d := range decision.Decisions {
-		log.Printf("AI决策打印-[%d] %s: %s - %s", i+1, d.Symbol, d.Action, d.Reasoning)
-		log.Printf("   杠杆: %dx | 仓位: %.2f USDT | 止损: %.4f | 止盈: %.4f",
-			d.Leverage, d.PositionSizeUSD, d.StopLoss, d.TakeProfit)
-	}
+	//log.Printf("\n" + strings.Repeat("-", 70))
+	//log.Println("💭 AI思维链分析:")
+	//log.Println(strings.Repeat("-", 70))
+	//log.Println(decision.CoTTrace)
+	//log.Printf(strings.Repeat("-", 70) + "\n")
 
 	// 8. 对决策排序：确保先平仓后开仓（防止仓位叠加超限）
 	sortedDecisions := sortDecisionsByPriority(decision.Decisions)
