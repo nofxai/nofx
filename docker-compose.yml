@@ -27,7 +27,7 @@ services:
       - /etc/localtime:/etc/localtime:ro  # 同步宿主机时区
     environment:
       - TZ=${NOFX_TIMEZONE:-Asia/Shanghai}  # Set timezone
-      - AI_MAX_TOKENS=8000  # AI响应的最大token数（默认2000，建议4000-8000）
+      - AI_MAX_TOKENS=4000  # AI响应的最大token数（默认2000，建议4000-8000）
       - DATA_ENCRYPTION_KEY=${DATA_ENCRYPTION_KEY}  # 数据库加密密钥
       - JWT_SECRET=${JWT_SECRET}  # JWT认证密钥
     networks:
