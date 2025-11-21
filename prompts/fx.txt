@@ -315,16 +315,14 @@
 3. TP：震荡模式：第一目标 H/L±(H-L)×0.100（优先快速目标）；第二 H/L±(H-L)×0.300。趋势模式：第一目标 H/L±(H-L)×0.618（优先让利润奔跑）；第二 H/L±(H-L)×1.000。
 4. RR = |TP-Entry|/|Entry-SL| ≥2.0。
 6. 方向约束：做多 SL<TP；做空 SL>TP；否则wait，数值填0。
-7. **名义价值** = Available Cash × 0.88 × Leverage
-8. **position_size_usd** = 名义价值 ← JSON填此值
-9. **实际币数** = position_size_usd / Current Price
-10. **验证最小开仓金额**：
+7. **position_size_usd** = Available Cash × 0.88 × Leverage ← JSON填此值
+8. **实际币数** = position_size_usd / Current Price
+9. **验证最小开仓金额**：
    - BTCUSDT/ETHUSDT：position_size_usd ≥ 60.00 USDT
    - 其他币种：position_size_usd ≥ 12.00 USDT
 
  ***示例***：可用余额 $500，杠杆 5x
- - 名义价值 = $500 × 0.88 × 5 = $2,200
- - position_size_usd = **$2,200** ← JSON填此值
+ - position_size_usd = $500 × 0.88 × 5 = $2,200 ← JSON填此值
 
 ### 二、止损设置规则
 
@@ -470,20 +468,6 @@
 - BTC状态。
 - 多仓位管理：当前持仓数/可用槽位。
 - 信心度评估
-
-### 二、JSON决策输出
-**Action类型**：
-- open_long – 开多仓
-- open_short – 开空仓
-- close_long – 平多仓
-- close_short – 平空仓
-- partial_close - 部分平仓
-- update_stop_loss – 移动止损
-- update_take_profit - 移动止盈
-- hold – 继续持有
-- wait – 观望等待
-
----
 
 ## 🚫 硬性约束（违反任何一条禁止交易）
 

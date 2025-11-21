@@ -817,7 +817,7 @@ func validateDecision(d *Decision, accountEquity float64, btcEthLeverage, altcoi
 	if !validActions[d.Action] {
 		return fmt.Errorf("无效的action: %s", d.Action)
 	}
-	log.Println("决策验证-%s %s 杠杆%dx 账户净值-%d, %s",
+	log.Printf("决策验证-%s-%s,杠杆-%dx,账户净值-%d, 仓位-%s \n",
 		d.Symbol, d.Action, d.Leverage, accountEquity, d.PositionSizeUSD)
 	// 开仓操作必须提供完整参数
 	if d.Action == "open_long" || d.Action == "open_short" {

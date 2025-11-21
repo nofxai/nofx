@@ -491,16 +491,13 @@ func (at *AutoTrader) runCycle() error {
 
 	// 7. 打印AI决策
 	log.Printf("📋 AI决策列表 (%d 个):\n", len(decision.Decisions))
-	log.Println("AI决策前,账户净值: %.2f USDT | 可用: %.2f USDT | 持仓: %d",
+	log.Printf("AI决策前,账户净值: %.2f USDT | 可用: %.2f USDT | 持仓: %d",
 		ctx.Account.TotalEquity, ctx.Account.AvailableBalance, ctx.Account.PositionCount)
 	for i, d := range decision.Decisions {
 		log.Printf("AI决策打印-[%d] %s: %s - %s", i+1, d.Symbol, d.Action, d.Reasoning)
-		if d.Action == "open_long" || d.Action == "open_short" {
-			log.Printf("      杠杆: %dx | 仓位: %.2f USDT | 止损: %.4f | 止盈: %.4f",
-				d.Leverage, d.PositionSizeUSD, d.StopLoss, d.TakeProfit)
-		}
+		log.Printf("   杠杆: %dx | 仓位: %.2f USDT | 止损: %.4f | 止盈: %.4f",
+			d.Leverage, d.PositionSizeUSD, d.StopLoss, d.TakeProfit)
 	}
-	log.Println()
 
 	// 8. 对决策排序：确保先平仓后开仓（防止仓位叠加超限）
 	sortedDecisions := sortDecisionsByPriority(decision.Decisions)
