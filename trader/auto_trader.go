@@ -132,10 +132,18 @@ func NewAutoTrader(config AutoTraderConfig, database interface{}, userID string)
 	mcpClient := mcp.New()
 
 	// 初始化AI
-	if config.AIModel == "custom" || config.AIModel == "openai" {
+	if config.AIModel == "custom" {
 		// 使用自定义API
 		mcpClient.SetAPIKey(config.CustomAPIKey, config.CustomAPIURL, config.CustomModelName)
-		log.Printf("🤖 [%s] 使用自定义AI API (Provider: %s): %s (模型: %s)", config.Name, config.AIModel, config.CustomAPIURL, config.CustomModelName)
+		log.Printf("🤖 [%s] 使用自定义AI API: %s (模型: %s)", config.Name, config.CustomAPIURL, config.CustomModelName)
+	} else if config.AIModel == "openai" {
+		// 使用 OpenAI 兼容 API
+		mcpClient.SetAPIKey(config.CustomAPIKey, config.CustomAPIURL, config.CustomModelName)
+		log.Printf("🤖 [%s] 使用 OpenAI API: %s (模型: %s)", config.Name, config.CustomAPIURL, config.CustomModelName)
+	} else if config.AIModel == "anthropic" {
+		// 使用 Anthropic 兼容 API
+		mcpClient.SetAPIKey(config.CustomAPIKey, config.CustomAPIURL, config.CustomModelName)
+		log.Printf("🤖 [%s] 使用 Anthropic API: %s (模型: %s)", config.Name, config.CustomAPIURL, config.CustomModelName)
 	} else if config.UseQwen || config.AIModel == "qwen" {
 		// 使用Qwen (支持自定义URL和Model)
 		mcpClient = mcp.NewQwenClient()
@@ -442,30 +450,6 @@ func (at *AutoTrader) runCycle() error {
 		}
 	}
 
-	// // 5. 打印系统提示词
-	log.Printf("\n" + strings.Repeat("=", 70))
-	log.Printf("📋 系统提示词 [模板: %s]", at.systemPromptTemplate)
-	log.Println(strings.Repeat("=", 70))
-	log.Println(decision.SystemPrompt)
-	log.Printf(strings.Repeat("=", 70) + "\n")
-
-	// 6. 打印AI思维链
-	log.Printf("\n" + strings.Repeat("-", 70))
-	log.Println("💭 AI思维链分析:")
-	log.Println(strings.Repeat("-", 70))
-	log.Println(decision.CoTTrace)
-	log.Printf(strings.Repeat("-", 70) + "\n")
-
-	// 7. 打印AI决策
-	log.Printf("📋 AI决策列表 (%d 个):\n", len(decision.Decisions))
-	for i, d := range decision.Decisions {
-		log.Println("  [%d] %s: %s - %s", i+1, d.Symbol, d.Action, d.Reasoning)
-		if d.Action == "open_long" || d.Action == "open_short" {
-			log.Printf("      杠杆: %dx | 仓位: %.2f USDT | 止损: %.4f | 止盈: %.4f",
-				d.Leverage, d.PositionSizeUSD, d.StopLoss, d.TakeProfit)
-		}
-	}
-
 	if err != nil {
 		record.Success = false
 		record.ErrorMessage = fmt.Sprintf("获取AI决策失败: %v", err)
@@ -490,6 +474,31 @@ func (at *AutoTrader) runCycle() error {
 		at.decisionLogger.LogDecision(record)
 		return fmt.Errorf("获取AI决策失败: %w", err)
 	}
+
+	// // 5. 打印系统提示词
+	log.Printf("\n" + strings.Repeat("=", 70))
+	log.Printf("📋 系统提示词 [模板: %s]", at.systemPromptTemplate)
+	log.Println(strings.Repeat("=", 70))
+	log.Println(decision.SystemPrompt)
+	log.Printf(strings.Repeat("=", 70) + "\n")
+
+	// 6. 打印AI思维链
+	log.Printf("\n" + strings.Repeat("-", 70))
+	log.Println("💭 AI思维链分析:")
+	log.Println(strings.Repeat("-", 70))
+	log.Println(decision.CoTTrace)
+	log.Printf(strings.Repeat("-", 70) + "\n")
+
+	// 7. 打印AI决策
+	log.Printf("📋 AI决策列表 (%d 个):\n", len(decision.Decisions))
+	for i, d := range decision.Decisions {
+		log.Printf("  [%d] %s: %s - %s", i+1, d.Symbol, d.Action, d.Reasoning)
+		if d.Action == "open_long" || d.Action == "open_short" {
+			log.Printf("      杠杆: %dx | 仓位: %.2f USDT | 止损: %.4f | 止盈: %.4f",
+				d.Leverage, d.PositionSizeUSD, d.StopLoss, d.TakeProfit)
+		}
+	}
+	log.Println()
 
 	// 8. 对决策排序：确保先平仓后开仓（防止仓位叠加超限）
 	sortedDecisions := sortDecisionsByPriority(decision.Decisions)
@@ -1353,6 +1362,11 @@ func (at *AutoTrader) GetAIModel() string {
 // GetExchange 获取交易所
 func (at *AutoTrader) GetExchange() string {
 	return at.exchange
+}
+
+// GetConfig 获取交易配置（用于测试）
+func (at *AutoTrader) GetConfig() AutoTraderConfig {
+	return at.config
 }
 
 // SetCustomPrompt 设置自定义交易策略prompt

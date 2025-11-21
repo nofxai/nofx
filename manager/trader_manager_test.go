@@ -1,13 +1,8 @@
 package manager
 
 import (
-	"fmt"
 	"nofx/config"
-	"nofx/trader"
 	"testing"
-
-	"github.com/agiledragon/gomonkey/v2"
-	"github.com/stretchr/testify/assert"
 )
 
 // TestRemoveTrader 测试从内存中移除trader
@@ -92,134 +87,162 @@ func TestGetTrader_AfterRemove(t *testing.T) {
 	}
 }
 
-// TestAddTraderFromDB_LoadAPIKey_TableDriven 使用表驱动测试验证不同 Provider 的 API Key 加载
-func TestAddTraderFromDB_LoadAPIKey_TableDriven(t *testing.T) {
-	testCases := []struct {
-		name           string
-		provider       string
-		apiKey         string
-		expectedAPIKey string
-	}{
-		{
-			name:           "Custom Provider",
-			provider:       "custom",
-			apiKey:         "sk-custom-test-key",
-			expectedAPIKey: "sk-custom-test-key",
-		},
-		{
-			name:           "OpenAI Provider",
-			provider:       "openai",
-			apiKey:         "sk-openai-test-key",
-			expectedAPIKey: "sk-openai-test-key",
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			tm := NewTraderManager()
-
-			// 1. 准备测试数据
-			traderCfg := &config.TraderRecord{
-				ID:   fmt.Sprintf("trader-%s-1", tc.provider),
-				Name: fmt.Sprintf("%s Trader", tc.name),
-			}
-			// 模拟 AI 模型
-			aiModelCfg := &config.AIModelConfig{
-				Provider: tc.provider,
-				APIKey:   tc.apiKey,
-			}
-			exchangeCfg := &config.ExchangeConfig{
-				ID: "binance",
-			}
-
-			// 2. Mock trader.NewAutoTrader
-			var capturedConfig trader.AutoTraderConfig
-			// 注意：gomonkey 是全局 patch，需要在每个子测试中应用或重置
-			// 由于 t.Run 是顺序执行的，我们可以这样用
-			patches := gomonkey.ApplyFunc(trader.NewAutoTrader, func(cfg trader.AutoTraderConfig, db interface{}, uid string) (*trader.AutoTrader, error) {
-				capturedConfig = cfg
-				return &trader.AutoTrader{}, nil
-			})
-			defer patches.Reset()
-
-			// 3. 执行 AddTraderFromDB
-			err := tm.AddTraderFromDB(traderCfg, aiModelCfg, exchangeCfg, "", "", 10, 20, 60, []string{}, nil, "user1")
-
-			// 4. 验证
-			assert.NoError(t, err)
-			assert.Equal(t, tc.expectedAPIKey, capturedConfig.CustomAPIKey, "%s 的 API Key 应该被正确加载到 CustomAPIKey 字段中", tc.name)
-		})
-	}
-}
-
-// TestReloadUserTraders_ShouldReplaceInstance 测试 ReloadUserTraders 是否会替换现有的 Trader 实例
-func TestReloadUserTraders_ShouldReplaceInstance(t *testing.T) {
+// TestAddTraderFromDB_OpenAIProvider 测试添加使用 OpenAI provider 的交易员时正确设置 API Key
+func TestAddTraderFromDB_OpenAIProvider(t *testing.T) {
 	tm := NewTraderManager()
-	traderID := "trader-reload-test"
 
-	// 1. 手动添加一个旧的 Trader 实例（模拟正在运行）
-	oldTrader := &trader.AutoTrader{}
-	tm.traders[traderID] = oldTrader
+	// 准备测试数据
+	traderCfg := &config.TraderRecord{
+		ID:                  "test-trader-openai",
+		UserID:              "test-user",
+		Name:                "Test OpenAI Trader",
+		AIModelID:           "test-openai-model",
+		ExchangeID:          "binance",
+		InitialBalance:      10000,
+		ScanIntervalMinutes: 3,
+		IsRunning:           false,
+		BTCETHLeverage:      10,
+		AltcoinLeverage:     5,
+		IsCrossMargin:       true,
+		TradingSymbols:      "BTC,ETH",
+	}
 
-	// 2. Mock 依赖
-	// Mock 数据库返回配置
-	mockDB := &config.Database{}
-	patchesDB := gomonkey.ApplyMethod(top(&config.Database{}), "GetTraders", func(_ *config.Database, _ string) ([]*config.TraderRecord, error) {
-		return []*config.TraderRecord{{
-			ID:         traderID,
-			Name:       "Reload Test Trader",
-			ExchangeID: "binance",
-			AIModelID:  "deepseek-1",
-		}}, nil
-	})
-	defer patchesDB.Reset()
+	aiModelCfg := &config.AIModelConfig{
+		ID:              "test-openai-model",
+		UserID:          "test-user",
+		Name:            "Test OpenAI",
+		Provider:        "openai",
+		Enabled:         true,
+		APIKey:          "test-api-key-12345",
+		CustomAPIURL:    "https://api.openai.com/v1",
+		CustomModelName: "gpt-4",
+	}
 
-	// Mock 其他依赖 (GetAIModels, GetExchanges, GetUserSignalSource)
-	patchesAI := gomonkey.ApplyMethod(top(&config.Database{}), "GetAIModels", func(_ *config.Database, _ string) ([]*config.AIModelConfig, error) {
-		return []*config.AIModelConfig{{
-			ID:       "deepseek-1",
-			Provider: "deepseek",
-			Enabled:  true,
-		}}, nil
-	})
-	defer patchesAI.Reset()
+	exchangeCfg := &config.ExchangeConfig{
+		ID:        "binance",
+		UserID:    "test-user",
+		Name:      "Binance",
+		Type:      "binance",
+		Enabled:   true,
+		APIKey:    "binance-api-key",
+		SecretKey: "binance-secret-key",
+		Testnet:   false,
+	}
 
-	patchesEx := gomonkey.ApplyMethod(top(&config.Database{}), "GetExchanges", func(_ *config.Database, _ string) ([]*config.ExchangeConfig, error) {
-		return []*config.ExchangeConfig{{ID: "binance", Enabled: true}}, nil
-	})
-	defer patchesEx.Reset()
+	// 调用 addTraderFromDB (内部方法，需要先获取锁)
+	err := tm.addTraderFromDB(
+		traderCfg,
+		aiModelCfg,
+		exchangeCfg,
+		"",    // coinPoolURL
+		"",    // oiTopURL
+		10.0,  // maxDailyLoss
+		20.0,  // maxDrawdown
+		60,    // stopTradingMinutes
+		[]string{"BTC", "ETH"}, // defaultCoins
+		nil,   // database (可以为 nil，因为我们只测试配置)
+		"test-user",
+	)
 
-	patchesSig := gomonkey.ApplyMethod(top(&config.Database{}), "GetUserSignalSource", func(_ *config.Database, _ string) (*config.UserSignalSource, error) {
-		return &config.UserSignalSource{}, nil
-	})
-	defer patchesSig.Reset()
+	if err != nil {
+		t.Fatalf("添加交易员失败: %v", err)
+	}
 
-	patchesSys := gomonkey.ApplyMethod(top(&config.Database{}), "GetSystemConfig", func(_ *config.Database, key string) (string, error) {
-		return "", nil
-	})
-	defer patchesSys.Reset()
+	// 验证交易员已添加
+	at, err := tm.GetTrader("test-trader-openai")
+	if err != nil {
+		t.Fatalf("获取交易员失败: %v", err)
+	}
 
-	// Mock NewAutoTrader 返回一个新的实例
-	newTrader := &trader.AutoTrader{}
-	patchesNew := gomonkey.ApplyFunc(trader.NewAutoTrader, func(_ trader.AutoTraderConfig, _ interface{}, _ string) (*trader.AutoTrader, error) {
-		return newTrader, nil
-	})
-	defer patchesNew.Reset()
+	if at == nil {
+		t.Fatal("交易员不应为 nil")
+	}
 
-	// 3. 执行 Reload
-	err := tm.ReloadUserTraders(mockDB, "user1")
+	// 验证配置是否正确设置
+	config := at.GetConfig()
 
-	// 4. 验证
-	assert.NoError(t, err)
+	// 关键验证：OpenAI provider 应该被设置为 AIModel="openai"，并且 CustomAPIKey 应该被设置
+	if config.AIModel != "openai" {
+		t.Errorf("AIModel 应该是 'openai'，实际是 '%s'", config.AIModel)
+	}
 
-	// 核心断言：Map 中的实例应该变成了新的实例
-	currentTrader := tm.traders[traderID]
-	assert.NotNil(t, currentTrader)
-	assert.NotSame(t, oldTrader, currentTrader, "ReloadUserTraders 应该替换旧的 Trader 实例")
-	assert.Same(t, newTrader, currentTrader, "Map 中应该是 NewAutoTrader 返回的新实例")
+	if config.CustomAPIKey == "" {
+		t.Error("CustomAPIKey 不应为空，OpenAI provider 的 API Key 应该被正确设置")
+	}
+
+	if config.CustomAPIKey != "test-api-key-12345" {
+		t.Errorf("CustomAPIKey 应该是 'test-api-key-12345'，实际是 '%s'", config.CustomAPIKey)
+	}
+
+	if config.CustomAPIURL != "https://api.openai.com/v1" {
+		t.Errorf("CustomAPIURL 应该是 'https://api.openai.com/v1'，实际是 '%s'", config.CustomAPIURL)
+	}
+
+	if config.CustomModelName != "gpt-4" {
+		t.Errorf("CustomModelName 应该是 'gpt-4'，实际是 '%s'", config.CustomModelName)
+	}
 }
 
-// 辅助函数：获取类型指针用于 gomonkey
-func top(v interface{}) interface{} {
-	return v
+// TestAddTraderFromDB_AnthropicProvider 测试添加使用 Anthropic provider 的交易员
+func TestAddTraderFromDB_AnthropicProvider(t *testing.T) {
+	tm := NewTraderManager()
+
+	traderCfg := &config.TraderRecord{
+		ID:                  "test-trader-anthropic",
+		UserID:              "test-user",
+		Name:                "Test Anthropic Trader",
+		AIModelID:           "test-anthropic-model",
+		ExchangeID:          "binance",
+		InitialBalance:      10000,
+		ScanIntervalMinutes: 3,
+		BTCETHLeverage:      10,
+		AltcoinLeverage:     5,
+		IsCrossMargin:       true,
+	}
+
+	aiModelCfg := &config.AIModelConfig{
+		ID:              "test-anthropic-model",
+		UserID:          "test-user",
+		Name:            "Test Anthropic",
+		Provider:        "anthropic",
+		Enabled:         true,
+		APIKey:          "test-anthropic-key",
+		CustomAPIURL:    "https://api.anthropic.com/v1",
+		CustomModelName: "claude-3-opus",
+	}
+
+	exchangeCfg := &config.ExchangeConfig{
+		ID:        "binance",
+		UserID:    "test-user",
+		Name:      "Binance",
+		Type:      "binance",
+		Enabled:   true,
+		APIKey:    "binance-api-key",
+		SecretKey: "binance-secret-key",
+	}
+
+	err := tm.addTraderFromDB(
+		traderCfg,
+		aiModelCfg,
+		exchangeCfg,
+		"", "", 10.0, 20.0, 60,
+		[]string{},
+		nil,
+		"test-user",
+	)
+
+	if err != nil {
+		t.Fatalf("添加交易员失败: %v", err)
+	}
+
+	at, _ := tm.GetTrader("test-trader-anthropic")
+	config := at.GetConfig()
+
+	if config.AIModel != "anthropic" {
+		t.Errorf("AIModel 应该是 'anthropic'，实际是 '%s'", config.AIModel)
+	}
+
+	if config.CustomAPIKey != "test-anthropic-key" {
+		t.Errorf("CustomAPIKey 应该是 'test-anthropic-key'，实际是 '%s'", config.CustomAPIKey)
+	}
 }

@@ -181,33 +181,12 @@ func (tm *TraderManager) LoadTradersFromDatabase(database *config.Database) erro
 	return nil
 }
 
-// addTraderFromDB 内部方法：从配置添加交易员（不加锁，因为调用方已加锁）
+// addTraderFromConfig 内部方法：从配置添加交易员（不加锁，因为调用方已加锁）
 func (tm *TraderManager) addTraderFromDB(traderCfg *config.TraderRecord, aiModelCfg *config.AIModelConfig, exchangeCfg *config.ExchangeConfig, coinPoolURL, oiTopURL string, maxDailyLoss, maxDrawdown float64, stopTradingMinutes int, defaultCoins []string, database *config.Database, userID string) error {
 	if _, exists := tm.traders[traderCfg.ID]; exists {
 		return fmt.Errorf("trader ID '%s' 已存在", traderCfg.ID)
 	}
 
-	at, err := tm.createAutoTrader(traderCfg, aiModelCfg, exchangeCfg, coinPoolURL, oiTopURL, maxDailyLoss, maxDrawdown, stopTradingMinutes, defaultCoins, database, userID)
-	if err != nil {
-		return err
-	}
-
-	tm.traders[traderCfg.ID] = at
-	log.Printf("✓ Trader '%s' (%s + %s) 已加载到内存", traderCfg.Name, aiModelCfg.Provider, exchangeCfg.ID)
-	return nil
-}
-
-// AddTraderFromDB 从数据库配置添加trader (公开方法，带锁)
-func (tm *TraderManager) AddTraderFromDB(traderCfg *config.TraderRecord, aiModelCfg *config.AIModelConfig, exchangeCfg *config.ExchangeConfig, coinPoolURL, oiTopURL string, maxDailyLoss, maxDrawdown float64, stopTradingMinutes int, defaultCoins []string, database *config.Database, userID string) error {
-	tm.mu.Lock()
-	defer tm.mu.Unlock()
-
-	// 复用内部方法逻辑
-	return tm.addTraderFromDB(traderCfg, aiModelCfg, exchangeCfg, coinPoolURL, oiTopURL, maxDailyLoss, maxDrawdown, stopTradingMinutes, defaultCoins, database, userID)
-}
-
-// createAutoTrader 核心工厂方法：创建 AutoTrader 实例（无副作用，不修改 tm.traders）
-func (tm *TraderManager) createAutoTrader(traderCfg *config.TraderRecord, aiModelCfg *config.AIModelConfig, exchangeCfg *config.ExchangeConfig, coinPoolURL, oiTopURL string, maxDailyLoss, maxDrawdown float64, stopTradingMinutes int, defaultCoins []string, database *config.Database, userID string) (*trader.AutoTrader, error) {
 	// 处理交易币种列表
 	var tradingCoins []string
 	if traderCfg.TradingSymbols != "" {
@@ -280,14 +259,16 @@ func (tm *TraderManager) createAutoTrader(traderCfg *config.TraderRecord, aiMode
 		traderConfig.QwenKey = aiModelCfg.APIKey
 	} else if aiModelCfg.Provider == "deepseek" {
 		traderConfig.DeepSeekKey = aiModelCfg.APIKey
-	} else if aiModelCfg.Provider == "custom" || aiModelCfg.Provider == "openai" {
+	} else {
+		// 其他provider (openai, anthropic, custom等) 使用 CustomAPIKey
 		traderConfig.CustomAPIKey = aiModelCfg.APIKey
+		log.Printf("🔑 [%s] 使用自定义AI Provider: %s", traderCfg.Name, aiModelCfg.Provider)
 	}
 
 	// 创建trader实例
 	at, err := trader.NewAutoTrader(traderConfig, database, userID)
 	if err != nil {
-		return nil, fmt.Errorf("创建trader失败: %w", err)
+		return fmt.Errorf("创建trader失败: %w", err)
 	}
 
 	// 设置自定义prompt（如果有）
@@ -301,7 +282,119 @@ func (tm *TraderManager) createAutoTrader(traderCfg *config.TraderRecord, aiMode
 		}
 	}
 
-	return at, nil
+	tm.traders[traderCfg.ID] = at
+	log.Printf("✓ Trader '%s' (%s + %s) 已加载到内存", traderCfg.Name, aiModelCfg.Provider, exchangeCfg.ID)
+	return nil
+}
+
+// AddTrader 从数据库配置添加trader (移除旧版兼容性)
+
+// AddTraderFromDB 从数据库配置添加trader
+func (tm *TraderManager) AddTraderFromDB(traderCfg *config.TraderRecord, aiModelCfg *config.AIModelConfig, exchangeCfg *config.ExchangeConfig, coinPoolURL, oiTopURL string, maxDailyLoss, maxDrawdown float64, stopTradingMinutes int, defaultCoins []string, database *config.Database, userID string) error {
+	tm.mu.Lock()
+	defer tm.mu.Unlock()
+
+	if _, exists := tm.traders[traderCfg.ID]; exists {
+		return fmt.Errorf("trader ID '%s' 已存在", traderCfg.ID)
+	}
+
+	// 处理交易币种列表
+	var tradingCoins []string
+	if traderCfg.TradingSymbols != "" {
+		// 解析逗号分隔的交易币种列表
+		symbols := strings.Split(traderCfg.TradingSymbols, ",")
+		for _, symbol := range symbols {
+			symbol = strings.TrimSpace(symbol)
+			if symbol != "" {
+				tradingCoins = append(tradingCoins, symbol)
+			}
+		}
+	}
+
+	// 如果没有指定交易币种，使用默认币种
+	if len(tradingCoins) == 0 {
+		tradingCoins = defaultCoins
+	}
+
+	// 根据交易员配置决定是否使用信号源
+	var effectiveCoinPoolURL string
+	if traderCfg.UseCoinPool && coinPoolURL != "" {
+		effectiveCoinPoolURL = coinPoolURL
+		log.Printf("✓ 交易员 %s 启用 COIN POOL 信号源: %s", traderCfg.Name, coinPoolURL)
+	}
+
+	// 构建AutoTraderConfig
+	traderConfig := trader.AutoTraderConfig{
+		ID:                    traderCfg.ID,
+		Name:                  traderCfg.Name,
+		AIModel:               aiModelCfg.Provider, // 使用provider作为模型标识
+		Exchange:              exchangeCfg.ID,      // 使用exchange ID
+		BinanceAPIKey:         "",
+		BinanceSecretKey:      "",
+		HyperliquidPrivateKey: "",
+		HyperliquidTestnet:    exchangeCfg.Testnet,
+		CoinPoolAPIURL:        effectiveCoinPoolURL,
+		UseQwen:               aiModelCfg.Provider == "qwen",
+		DeepSeekKey:           "",
+		QwenKey:               "",
+		CustomAPIURL:          aiModelCfg.CustomAPIURL,    // 自定义API URL
+		CustomModelName:       aiModelCfg.CustomModelName, // 自定义模型名称
+		ScanInterval:          time.Duration(traderCfg.ScanIntervalMinutes) * time.Minute,
+		InitialBalance:        traderCfg.InitialBalance,
+		BTCETHLeverage:        traderCfg.BTCETHLeverage,
+		AltcoinLeverage:       traderCfg.AltcoinLeverage,
+		MaxDailyLoss:          maxDailyLoss,
+		MaxDrawdown:           maxDrawdown,
+		StopTradingTime:       time.Duration(stopTradingMinutes) * time.Minute,
+		IsCrossMargin:         traderCfg.IsCrossMargin,
+		DefaultCoins:          defaultCoins,
+		TradingCoins:          tradingCoins,
+	}
+
+	// 根据交易所类型设置API密钥
+	if exchangeCfg.ID == "binance" {
+		traderConfig.BinanceAPIKey = exchangeCfg.APIKey
+		traderConfig.BinanceSecretKey = exchangeCfg.SecretKey
+	} else if exchangeCfg.ID == "hyperliquid" {
+		traderConfig.HyperliquidPrivateKey = exchangeCfg.APIKey // hyperliquid用APIKey存储private key
+		traderConfig.HyperliquidWalletAddr = exchangeCfg.HyperliquidWalletAddr
+	} else if exchangeCfg.ID == "aster" {
+		traderConfig.AsterUser = exchangeCfg.AsterUser
+		traderConfig.AsterSigner = exchangeCfg.AsterSigner
+		traderConfig.AsterPrivateKey = exchangeCfg.AsterPrivateKey
+	}
+
+	// 根据AI模型设置API密钥
+	if aiModelCfg.Provider == "qwen" {
+		traderConfig.QwenKey = aiModelCfg.APIKey
+	} else if aiModelCfg.Provider == "deepseek" {
+		traderConfig.DeepSeekKey = aiModelCfg.APIKey
+	} else {
+		// 其他provider (openai, anthropic, custom等) 使用 CustomAPIKey
+		traderConfig.CustomAPIKey = aiModelCfg.APIKey
+		log.Printf("🔑 [%s] 使用自定义AI Provider: %s", traderCfg.Name, aiModelCfg.Provider)
+	}
+
+	// 创建trader实例
+	at, err := trader.NewAutoTrader(traderConfig, database, userID)
+	if err != nil {
+		return fmt.Errorf("创建trader失败: %w", err)
+	}
+
+	// 设置自定义prompt（如果有）
+	if traderCfg.CustomPrompt != "" {
+		at.SetCustomPrompt(traderCfg.CustomPrompt)
+		at.SetOverrideBasePrompt(traderCfg.OverrideBasePrompt)
+		if traderCfg.OverrideBasePrompt {
+			log.Printf("✓ 已设置自定义交易策略prompt (覆盖基础prompt)")
+		} else {
+			log.Printf("✓ 已设置自定义交易策略prompt (补充基础prompt)")
+		}
+	}
+
+	tm.traders[traderCfg.ID] = at
+	log.Printf("✓ Trader '%s' (%s + %s) 已添加", traderCfg.Name, aiModelCfg.Provider, exchangeCfg.ID)
+	return nil
 }
 
 // GetTrader 获取指定ID的trader
@@ -810,6 +903,35 @@ func (tm *TraderManager) LoadUserTraders(database *config.Database, userID strin
 	return nil
 }
 
+// ReloadUserTraders 强制重新加载用户的所有交易员（用于配置更新后）
+func (tm *TraderManager) ReloadUserTraders(database *config.Database, userID string) error {
+	// 1. 获取数据库中的交易员列表
+	traders, err := database.GetTraders(userID)
+	if err != nil {
+		return fmt.Errorf("获取用户 %s 的交易员列表失败: %w", userID, err)
+	}
+
+	// 2. 移除内存中的这些交易员
+	tm.mu.Lock()
+	for _, t := range traders {
+		if oldTrader, exists := tm.traders[t.ID]; exists {
+			// 如果交易员正在运行，先停止它
+			status := oldTrader.GetStatus()
+			if isRunning, ok := status["is_running"].(bool); ok && isRunning {
+				oldTrader.Stop()
+				log.Printf("⏹  配置更新: 已停止并移除运行中的交易员 %s", t.Name)
+			} else {
+				log.Printf("🔄 配置更新: 已移除交易员实例 %s", t.Name)
+			}
+			delete(tm.traders, t.ID)
+		}
+	}
+	tm.mu.Unlock()
+
+	// 3. 重新加载（LoadUserTraders 会处理并发锁）
+	return tm.LoadUserTraders(database, userID)
+}
+
 // LoadTraderByID 加载指定ID的单个交易员到内存
 // 此方法会自动查询所需的所有配置（AI模型、交易所、系统配置等）
 // 参数:
@@ -960,11 +1082,96 @@ func (tm *TraderManager) LoadTraderByID(database *config.Database, userID, trade
 	)
 }
 
-// loadSingleTrader 加载单个交易员（调用 createAutoTrader 并添加到 traders map）
+// loadSingleTrader 加载单个交易员（从现有代码提取的公共逻辑）
 func (tm *TraderManager) loadSingleTrader(traderCfg *config.TraderRecord, aiModelCfg *config.AIModelConfig, exchangeCfg *config.ExchangeConfig, coinPoolURL, oiTopURL string, maxDailyLoss, maxDrawdown float64, stopTradingMinutes int, defaultCoins []string, database *config.Database, userID string) error {
-	at, err := tm.createAutoTrader(traderCfg, aiModelCfg, exchangeCfg, coinPoolURL, oiTopURL, maxDailyLoss, maxDrawdown, stopTradingMinutes, defaultCoins, database, userID)
+	// 处理交易币种列表
+	var tradingCoins []string
+	if traderCfg.TradingSymbols != "" {
+		// 解析逗号分隔的交易币种列表
+		symbols := strings.Split(traderCfg.TradingSymbols, ",")
+		for _, symbol := range symbols {
+			symbol = strings.TrimSpace(symbol)
+			if symbol != "" {
+				tradingCoins = append(tradingCoins, symbol)
+			}
+		}
+	}
+
+	// 如果没有指定交易币种，使用默认币种
+	if len(tradingCoins) == 0 {
+		tradingCoins = defaultCoins
+	}
+
+	// 根据交易员配置决定是否使用信号源
+	var effectiveCoinPoolURL string
+	if traderCfg.UseCoinPool && coinPoolURL != "" {
+		effectiveCoinPoolURL = coinPoolURL
+		log.Printf("✓ 交易员 %s 启用 COIN POOL 信号源: %s", traderCfg.Name, coinPoolURL)
+	}
+
+	// 构建AutoTraderConfig
+	traderConfig := trader.AutoTraderConfig{
+		ID:                   traderCfg.ID,
+		Name:                 traderCfg.Name,
+		AIModel:              aiModelCfg.Provider, // 使用provider作为模型标识
+		Exchange:             exchangeCfg.ID,      // 使用exchange ID
+		InitialBalance:       traderCfg.InitialBalance,
+		BTCETHLeverage:       traderCfg.BTCETHLeverage,
+		AltcoinLeverage:      traderCfg.AltcoinLeverage,
+		ScanInterval:         time.Duration(traderCfg.ScanIntervalMinutes) * time.Minute,
+		CoinPoolAPIURL:       effectiveCoinPoolURL,
+		CustomAPIURL:         aiModelCfg.CustomAPIURL,    // 自定义API URL
+		CustomModelName:      aiModelCfg.CustomModelName, // 自定义模型名称
+		UseQwen:              aiModelCfg.Provider == "qwen",
+		MaxDailyLoss:         maxDailyLoss,
+		MaxDrawdown:          maxDrawdown,
+		StopTradingTime:      time.Duration(stopTradingMinutes) * time.Minute,
+		IsCrossMargin:        traderCfg.IsCrossMargin,
+		DefaultCoins:         defaultCoins,
+		TradingCoins:         tradingCoins,
+		SystemPromptTemplate: traderCfg.SystemPromptTemplate, // 系统提示词模板
+		HyperliquidTestnet:   exchangeCfg.Testnet,            // Hyperliquid测试网
+	}
+
+	// 根据交易所类型设置API密钥
+	if exchangeCfg.ID == "binance" {
+		traderConfig.BinanceAPIKey = exchangeCfg.APIKey
+		traderConfig.BinanceSecretKey = exchangeCfg.SecretKey
+	} else if exchangeCfg.ID == "hyperliquid" {
+		traderConfig.HyperliquidPrivateKey = exchangeCfg.APIKey // hyperliquid用APIKey存储private key
+		traderConfig.HyperliquidWalletAddr = exchangeCfg.HyperliquidWalletAddr
+	} else if exchangeCfg.ID == "aster" {
+		traderConfig.AsterUser = exchangeCfg.AsterUser
+		traderConfig.AsterSigner = exchangeCfg.AsterSigner
+		traderConfig.AsterPrivateKey = exchangeCfg.AsterPrivateKey
+	}
+
+	// 根据AI模型设置API密钥
+	if aiModelCfg.Provider == "qwen" {
+		traderConfig.QwenKey = aiModelCfg.APIKey
+	} else if aiModelCfg.Provider == "deepseek" {
+		traderConfig.DeepSeekKey = aiModelCfg.APIKey
+	} else {
+		// 其他provider (openai, anthropic, custom等) 使用 CustomAPIKey
+		traderConfig.CustomAPIKey = aiModelCfg.APIKey
+		log.Printf("🔑 [%s] 使用自定义AI Provider: %s", traderCfg.Name, aiModelCfg.Provider)
+	}
+
+	// 创建trader实例
+	at, err := trader.NewAutoTrader(traderConfig, database, userID)
 	if err != nil {
-		return err
+		return fmt.Errorf("创建trader失败: %w", err)
+	}
+
+	// 设置自定义prompt（如果有）
+	if traderCfg.CustomPrompt != "" {
+		at.SetCustomPrompt(traderCfg.CustomPrompt)
+		at.SetOverrideBasePrompt(traderCfg.OverrideBasePrompt)
+		if traderCfg.OverrideBasePrompt {
+			log.Printf("✓ 已设置自定义交易策略prompt (覆盖基础prompt)")
+		} else {
+			log.Printf("✓ 已设置自定义交易策略prompt (补充基础prompt)")
+		}
 	}
 
 	tm.traders[traderCfg.ID] = at
@@ -973,81 +1180,13 @@ func (tm *TraderManager) loadSingleTrader(traderCfg *config.TraderRecord, aiMode
 }
 
 // RemoveTrader 从内存中移除指定的trader（不影响数据库）
-
 // 用于更新trader配置时强制重新加载
-
 func (tm *TraderManager) RemoveTrader(traderID string) {
-
 	tm.mu.Lock()
-
 	defer tm.mu.Unlock()
 
-
-
 	if _, exists := tm.traders[traderID]; exists {
-
 		delete(tm.traders, traderID)
-
 		log.Printf("✓ Trader %s 已从内存中移除", traderID)
-
 	}
-
-}
-
-
-
-// ReloadUserTraders 强制重新加载用户的所有交易员（用于配置更新后）
-
-func (tm *TraderManager) ReloadUserTraders(database *config.Database, userID string) error {
-
-	// 1. 获取数据库中的交易员列表
-
-	traders, err := database.GetTraders(userID)
-
-	if err != nil {
-
-		return fmt.Errorf("获取用户 %s 的交易员列表失败: %w", userID, err)
-
-	}
-
-
-
-	// 2. 移除内存中的这些交易员
-
-	tm.mu.Lock()
-
-	for _, t := range traders {
-
-		if oldTrader, exists := tm.traders[t.ID]; exists {
-
-			// 如果交易员正在运行，先停止它
-
-			status := oldTrader.GetStatus()
-
-			if isRunning, ok := status["is_running"].(bool); ok && isRunning {
-
-				oldTrader.Stop()
-
-				log.Printf("⏹  配置更新: 已停止并移除运行中的交易员 %s", t.Name)
-
-			} else {
-
-				log.Printf("🔄 配置更新: 已移除交易员实例 %s", t.Name)
-
-			}
-
-			delete(tm.traders, t.ID)
-
-		}
-
-	}
-
-	tm.mu.Unlock()
-
-
-
-	// 3. 重新加载（LoadUserTraders 会处理并发锁）
-
-	return tm.LoadUserTraders(database, userID)
-
 }

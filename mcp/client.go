@@ -167,7 +167,8 @@ func (client *Client) callOnce(systemPrompt, userPrompt string) (string, error) 
 		url = client.BaseURL
 	} else {
 		// 默认行为：添加/chat/completions
-		url = fmt.Sprintf("%s/chat/completions", client.BaseURL)
+		baseURL := strings.TrimSuffix(client.BaseURL, "/")
+		url = fmt.Sprintf("%s/chat/completions", baseURL)
 	}
 	log.Printf("📡 [MCP] 请求 URL: %s", url)
 
