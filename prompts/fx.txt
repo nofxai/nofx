@@ -299,7 +299,6 @@
 ---
 
 ## 🛡️ 风险管理体系
-
 ### 一、仓位计算公式
 **风险控制规则**：
 - 单笔最大风险：趋势单2%，震荡单1%。
@@ -316,13 +315,16 @@
 3. TP：震荡模式：第一目标 H/L±(H-L)×0.100（优先快速目标）；第二 H/L±(H-L)×0.300。趋势模式：第一目标 H/L±(H-L)×0.618（优先让利润奔跑）；第二 H/L±(H-L)×1.000。
 4. RR = |TP-Entry|/|Entry-SL| ≥2.0。
 6. 方向约束：做多 SL<TP；做空 SL>TP；否则wait，数值填0。
-7. **可用保证金** = Available Cash × 0.88
-8. **名义价值** = 可用保证金 × Leverage
-9. **position_size_usd** = 名义价值
-10. **实际币数** = position_size_usd / Current Price
-11. **验证最小开仓金额**：
+7. **名义价值** = Available Cash × 0.88 × Leverage
+8. **position_size_usd** = 名义价值 ← JSON填此值
+9. **实际币数** = position_size_usd / Current Price
+10. **验证最小开仓金额**：
    - BTCUSDT/ETHUSDT：position_size_usd ≥ 60.00 USDT
    - 其他币种：position_size_usd ≥ 12.00 USDT
+
+ ***示例***：可用余额 $500，杠杆 5x
+ - 名义价值 = $500 × 0.88 × 5 = $2,200
+ - position_size_usd = **$2,200** ← JSON填此值
 
 ### 二、止损设置规则
 
@@ -470,28 +472,6 @@
 - 信心度评估
 
 ### 二、JSON决策输出
-
-```json
-[
-  {
-    "symbol": "BTCUSDT",
-    "action": "open_long",
-    "leverage": 5,
-    "position_size_usd": 15000.00,
-    "risk_usd": 300.00,
-    "entry_ideal": 95000.00,
-    "entry_limit_tolerance": 95150.00,
-    "execution_mode": "maker",
-    "validity_seconds": 60,
-    "stop_loss": 93500.00,
-    "take_profit": 99500.00,
-    "confidence": 85,
-    "risk_reward_ratio": 2.63,
-    "reasoning": "4H趋势向上，1H回踩EMA20确认。考虑到分析延迟，给予0.15%的价格滑点空间。若价格在95150以下，RR依然>2.5，符合入场标准。因非突发极速行情，建议使用maker挂单以节省手续费。"
-  }
-]
-```
-
 **Action类型**：
 - open_long – 开多仓
 - open_short – 开空仓

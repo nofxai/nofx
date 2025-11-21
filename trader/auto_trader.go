@@ -491,8 +491,10 @@ func (at *AutoTrader) runCycle() error {
 
 	// 7. 打印AI决策
 	log.Printf("📋 AI决策列表 (%d 个):\n", len(decision.Decisions))
+	log.Println("AI决策前,账户净值: %.2f USDT | 可用: %.2f USDT | 持仓: %d",
+		ctx.Account.TotalEquity, ctx.Account.AvailableBalance, ctx.Account.PositionCount)
 	for i, d := range decision.Decisions {
-		log.Printf("  [%d] %s: %s - %s", i+1, d.Symbol, d.Action, d.Reasoning)
+		log.Printf("AI决策打印-[%d] %s: %s - %s", i+1, d.Symbol, d.Action, d.Reasoning)
 		if d.Action == "open_long" || d.Action == "open_short" {
 			log.Printf("      杠杆: %dx | 仓位: %.2f USDT | 止损: %.4f | 止盈: %.4f",
 				d.Leverage, d.PositionSizeUSD, d.StopLoss, d.TakeProfit)
