@@ -1,4 +1,4 @@
-import { Filter } from 'lucide-react'
+import { Activity } from 'lucide-react'
 import { type Language } from '../i18n/translations'
 import { t } from '../i18n/translations'
 
@@ -33,7 +33,7 @@ function FilterToggle({
       }}
       title={t('filterOnlyWithActions', language)}
     >
-      <Filter className="w-3.5 h-3.5" />
+      <Activity className="w-3.5 h-3.5" />
       <span>{t('filterOnlyWithActions', language)}</span>
     </button>
   )

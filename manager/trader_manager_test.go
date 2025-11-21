@@ -1,6 +1,7 @@
 package manager
 
 import (
+	"nofx/config"
 	"testing"
 )
 
@@ -83,5 +84,165 @@ func TestGetTrader_AfterRemove(t *testing.T) {
 	_, err := tm.GetTrader(traderID)
 	if err == nil {
 		t.Error("获取已移除的 trader 应该返回错误")
+	}
+}
+
+// TestAddTraderFromDB_OpenAIProvider 测试添加使用 OpenAI provider 的交易员时正确设置 API Key
+func TestAddTraderFromDB_OpenAIProvider(t *testing.T) {
+	tm := NewTraderManager()
+
+	// 准备测试数据
+	traderCfg := &config.TraderRecord{
+		ID:                  "test-trader-openai",
+		UserID:              "test-user",
+		Name:                "Test OpenAI Trader",
+		AIModelID:           "test-openai-model",
+		ExchangeID:          "binance",
+		InitialBalance:      10000,
+		ScanIntervalMinutes: 3,
+		IsRunning:           false,
+		BTCETHLeverage:      10,
+		AltcoinLeverage:     5,
+		IsCrossMargin:       true,
+		TradingSymbols:      "BTC,ETH",
+	}
+
+	aiModelCfg := &config.AIModelConfig{
+		ID:              "test-openai-model",
+		UserID:          "test-user",
+		Name:            "Test OpenAI",
+		Provider:        "openai",
+		Enabled:         true,
+		APIKey:          "test-api-key-12345",
+		CustomAPIURL:    "https://api.openai.com/v1",
+		CustomModelName: "gpt-4",
+	}
+
+	exchangeCfg := &config.ExchangeConfig{
+		ID:        "binance",
+		UserID:    "test-user",
+		Name:      "Binance",
+		Type:      "binance",
+		Enabled:   true,
+		APIKey:    "binance-api-key",
+		SecretKey: "binance-secret-key",
+		Testnet:   false,
+	}
+
+	// 调用 addTraderFromDB (内部方法，需要先获取锁)
+	err := tm.addTraderFromDB(
+		traderCfg,
+		aiModelCfg,
+		exchangeCfg,
+		"",    // coinPoolURL
+		"",    // oiTopURL
+		10.0,  // maxDailyLoss
+		20.0,  // maxDrawdown
+		60,    // stopTradingMinutes
+		[]string{"BTC", "ETH"}, // defaultCoins
+		nil,   // database (可以为 nil，因为我们只测试配置)
+		"test-user",
+	)
+
+	if err != nil {
+		t.Fatalf("添加交易员失败: %v", err)
+	}
+
+	// 验证交易员已添加
+	at, err := tm.GetTrader("test-trader-openai")
+	if err != nil {
+		t.Fatalf("获取交易员失败: %v", err)
+	}
+
+	if at == nil {
+		t.Fatal("交易员不应为 nil")
+	}
+
+	// 验证配置是否正确设置
+	config := at.GetConfig()
+
+	// 关键验证：OpenAI provider 应该被设置为 AIModel="openai"，并且 CustomAPIKey 应该被设置
+	if config.AIModel != "openai" {
+		t.Errorf("AIModel 应该是 'openai'，实际是 '%s'", config.AIModel)
+	}
+
+	if config.CustomAPIKey == "" {
+		t.Error("CustomAPIKey 不应为空，OpenAI provider 的 API Key 应该被正确设置")
+	}
+
+	if config.CustomAPIKey != "test-api-key-12345" {
+		t.Errorf("CustomAPIKey 应该是 'test-api-key-12345'，实际是 '%s'", config.CustomAPIKey)
+	}
+
+	if config.CustomAPIURL != "https://api.openai.com/v1" {
+		t.Errorf("CustomAPIURL 应该是 'https://api.openai.com/v1'，实际是 '%s'", config.CustomAPIURL)
+	}
+
+	if config.CustomModelName != "gpt-4" {
+		t.Errorf("CustomModelName 应该是 'gpt-4'，实际是 '%s'", config.CustomModelName)
+	}
+}
+
+// TestAddTraderFromDB_AnthropicProvider 测试添加使用 Anthropic provider 的交易员
+func TestAddTraderFromDB_AnthropicProvider(t *testing.T) {
+	tm := NewTraderManager()
+
+	traderCfg := &config.TraderRecord{
+		ID:                  "test-trader-anthropic",
+		UserID:              "test-user",
+		Name:                "Test Anthropic Trader",
+		AIModelID:           "test-anthropic-model",
+		ExchangeID:          "binance",
+		InitialBalance:      10000,
+		ScanIntervalMinutes: 3,
+		BTCETHLeverage:      10,
+		AltcoinLeverage:     5,
+		IsCrossMargin:       true,
+	}
+
+	aiModelCfg := &config.AIModelConfig{
+		ID:              "test-anthropic-model",
+		UserID:          "test-user",
+		Name:            "Test Anthropic",
+		Provider:        "anthropic",
+		Enabled:         true,
+		APIKey:          "test-anthropic-key",
+		CustomAPIURL:    "https://api.anthropic.com/v1",
+		CustomModelName: "claude-3-opus",
+	}
+
+	exchangeCfg := &config.ExchangeConfig{
+		ID:        "binance",
+		UserID:    "test-user",
+		Name:      "Binance",
+		Type:      "binance",
+		Enabled:   true,
+		APIKey:    "binance-api-key",
+		SecretKey: "binance-secret-key",
+	}
+
+	err := tm.addTraderFromDB(
+		traderCfg,
+		aiModelCfg,
+		exchangeCfg,
+		"", "", 10.0, 20.0, 60,
+		[]string{},
+		nil,
+		"test-user",
+	)
+
+	if err != nil {
+		t.Fatalf("添加交易员失败: %v", err)
+	}
+
+	at, _ := tm.GetTrader("test-trader-anthropic")
+	config := at.GetConfig()
+
+	if config.AIModel != "anthropic" {
+		t.Errorf("AIModel 应该是 'anthropic'，实际是 '%s'", config.AIModel)
+	}
+
+	if config.CustomAPIKey != "test-anthropic-key" {
+		t.Errorf("CustomAPIKey 应该是 'test-anthropic-key'，实际是 '%s'", config.CustomAPIKey)
 	}
 }

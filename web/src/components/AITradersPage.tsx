@@ -446,7 +446,7 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
       buildRequest: (models) => ({
         models: Object.fromEntries(
           models.map((model) => [
-            model.provider,
+            model.id,
             {
               enabled: model.enabled,
               api_key: model.apiKey || '',
@@ -518,7 +518,7 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
       const request = {
         models: Object.fromEntries(
           updatedModels.map((model) => [
-            model.provider, // 使用 provider 而不是 id
+            model.id,
             {
               enabled: model.enabled,
               api_key: model.apiKey || '',

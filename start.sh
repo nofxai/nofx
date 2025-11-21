@@ -290,11 +290,20 @@ start() {
     read_env_vars
 
     # 确保必要的文件和目录存在（修复 Docker volume 挂载问题）
-    if [ ! -f "config.db" ]; then
+    if [[ ! -f "config.db" ]]; then
         print_info "创建数据库文件..."
         install -m 600 /dev/null config.db
     fi
-    if [ ! -d "decision_logs" ]; then
+    # 创建 SQLite WAL 和 SHM 文件（如果不存在），避免 Docker 创建为目录
+    if [[ ! -e "config.db-wal" ]]; then
+        print_info "创建 SQLite WAL 文件..."
+        install -m 600 /dev/null config.db-wal
+    fi
+    if [[ ! -e "config.db-shm" ]]; then
+        print_info "创建 SQLite SHM 文件..."
+        install -m 600 /dev/null config.db-shm
+    fi
+    if [[ ! -d "decision_logs" ]]; then
         print_info "创建日志目录..."
         install -m 700 -d decision_logs
     fi

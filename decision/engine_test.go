@@ -6,6 +6,14 @@ import (
 	"testing"
 )
 
+// 初始化测试环境
+func init() {
+	// 在本地测试环境中，prompts 目录位于项目根目录
+	// 由于测试在 decision 目录下运行，所以相对路径是 ../prompts
+	promptsDir = "../prompts"
+	_ = globalPromptManager.ReloadTemplates(promptsDir)
+}
+
 // TestBuildPromptSnapshot 测试 prompt 快照生成功能
 func TestBuildPromptSnapshot(t *testing.T) {
 	t.Run("基础模板应该包含硬约束部分", func(t *testing.T) {

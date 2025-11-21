@@ -1043,11 +1043,19 @@ func (d *Database) UpdateAIModel(userID, id string, enabled bool, apiKey, custom
 
 	if err == nil {
 		// 找到了现有配置（精确匹配 ID），更新它
-		encryptedAPIKey := d.encryptSensitiveData(apiKey)
-		_, err = d.db.Exec(`
+		if apiKey != "" {
+			encryptedAPIKey := d.encryptSensitiveData(apiKey)
+			_, err = d.db.Exec(`
 			UPDATE ai_models SET enabled = ?, api_key = ?, custom_api_url = ?, custom_model_name = ?, updated_at = datetime('now')
 			WHERE id = ? AND user_id = ?
 		`, enabled, encryptedAPIKey, customAPIURL, customModelName, existingID, userID)
+		} else {
+			// apiKey 为空，保留原值，只更新其他字段
+			_, err = d.db.Exec(`
+			UPDATE ai_models SET enabled = ?, custom_api_url = ?, custom_model_name = ?, updated_at = datetime('now')
+			WHERE id = ? AND user_id = ?
+		`, enabled, customAPIURL, customModelName, existingID, userID)
+		}
 		return err
 	}
 
@@ -1060,11 +1068,19 @@ func (d *Database) UpdateAIModel(userID, id string, enabled bool, apiKey, custom
 	if err == nil {
 		// 找到了现有配置（通过 provider 匹配，兼容旧版），更新它
 		log.Printf("⚠️  使用旧版 provider 匹配更新模型: %s -> %s", provider, existingID)
-		encryptedAPIKey := d.encryptSensitiveData(apiKey)
-		_, err = d.db.Exec(`
+		if apiKey != "" {
+			encryptedAPIKey := d.encryptSensitiveData(apiKey)
+			_, err = d.db.Exec(`
 			UPDATE ai_models SET enabled = ?, api_key = ?, custom_api_url = ?, custom_model_name = ?, updated_at = datetime('now')
 			WHERE id = ? AND user_id = ?
 		`, enabled, encryptedAPIKey, customAPIURL, customModelName, existingID, userID)
+		} else {
+			// apiKey 为空，保留原值，只更新其他字段
+			_, err = d.db.Exec(`
+			UPDATE ai_models SET enabled = ?, custom_api_url = ?, custom_model_name = ?, updated_at = datetime('now')
+			WHERE id = ? AND user_id = ?
+		`, enabled, customAPIURL, customModelName, existingID, userID)
+		}
 		return err
 	}
 

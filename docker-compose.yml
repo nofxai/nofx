@@ -1,3 +1,9 @@
+# ⚠️ 重要提示：请定期备份以下核心资产目录/文件
+# 1. config.db (+ config.db-wal/shm) - 系统配置数据库
+# 2. prompts/ - AI 提示词模板
+# 3. decision_logs/ - 完整决策历史
+# 4. secrets/ - RSA 密钥文件
+
 services:
   # Backend service (API and core logic)
   nofx:
@@ -10,13 +16,15 @@ services:
     ports:
       - "${NOFX_BACKEND_PORT:-8080}:8080"
     volumes:
-      - ./config.json:/app/config.json:ro
-      - ./config.db:/app/config.db
-      - ./beta_codes.txt:/app/beta_codes.txt:ro
-      - ./prompts:/app/prompts
-      - ./secrets:/app/secrets:ro  # RSA密钥文件
-      - ./decision_logs:/app/decision_logs  # 决策日志目录（持久化）
-      - /etc/localtime:/etc/localtime:ro  # Sync host time
+      - ./config.json:/app/config.json:ro  # 基础配置文件（杠杆、风控参数等，只读）
+      - ./config.db:/app/config.db  # 🔥 核心资产：系统配置数据库（交易员配置、API密钥、用户数据等）
+      - ./config.db-wal:/app/config.db-wal  # SQLite WAL 文件（Write-Ahead Log，必须映射以支持 WAL 模式）
+      - ./config.db-shm:/app/config.db-shm  # SQLite SHM 文件（Shared Memory，必须映射以支持 WAL 模式）
+      - ./beta_codes.txt:/app/beta_codes.txt:ro  # 内测邀请码文件（只读）
+      - ./prompts:/app/prompts  # 🔥 核心资产：AI 提示词模板目录（决定交易策略和决策质量）
+      - ./secrets:/app/secrets:ro  # RSA 密钥文件目录（用于加密敏感数据，只读）
+      - ./decision_logs:/app/decision_logs  # 🔥 核心资产：完整决策历史目录（AI思维链、交易记录、性能分析数据）
+      - /etc/localtime:/etc/localtime:ro  # 同步宿主机时区
     environment:
       - TZ=${NOFX_TIMEZONE:-Asia/Shanghai}  # Set timezone
       - AI_MAX_TOKENS=4000  # AI响应的最大token数（默认2000，建议4000-8000）
