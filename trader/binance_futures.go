@@ -15,6 +15,11 @@ import (
 	"github.com/adshao/go-binance/v2/futures"
 )
 
+// 日志消息常量（避免重复字符串）
+const (
+	logMsgCancelledAllOrders = "  ✓ 已取消 %s 的所有挂单"
+)
+
 // getBrOrderID 生成唯一订单ID（合约专用）
 // 格式: x-{BR_ID}{TIMESTAMP}{RANDOM}
 // 合约限制32字符，统一使用此限制以保持一致性
@@ -424,20 +429,18 @@ func (t *FuturesTrader) OpenShort(symbol string, quantity float64, leverage int)
 
 // CloseLong 平多仓
 func (t *FuturesTrader) CloseLong(symbol string, quantity float64) (map[string]interface{}, error) {
-	// 如果数量为0，获取当前持仓数量
+	// 如果数量为0，获取全部持仓数量
 	if quantity == 0 {
 		positions, err := t.GetPositions()
 		if err != nil {
 			return nil, err
 		}
-
 		for _, pos := range positions {
 			if pos["symbol"] == symbol && pos["side"] == "long" {
 				quantity = pos["positionAmt"].(float64)
 				break
 			}
 		}
-
 		if quantity == 0 {
 			return nil, fmt.Errorf("没有找到 %s 的多仓", symbol)
 		}
@@ -465,9 +468,12 @@ func (t *FuturesTrader) CloseLong(symbol string, quantity float64) (map[string]i
 
 	log.Printf("✓ 平多仓成功: %s 数量: %s", symbol, quantityStr)
 
-	// 平仓后取消该币种的所有挂单（止损止盈单）
+	// 取消该币种的所有挂单（包括止损止盈）
+	// 注意：部分平仓时，auto_trader.go 会负责用正确的数量重新创建 SL/TP 订单
 	if err := t.CancelAllOrders(symbol); err != nil {
 		log.Printf("  ⚠ 取消挂单失败: %v", err)
+	} else {
+		log.Printf(logMsgCancelledAllOrders, symbol)
 	}
 
 	result := make(map[string]interface{})
@@ -479,20 +485,18 @@ func (t *FuturesTrader) CloseLong(symbol string, quantity float64) (map[string]i
 
 // CloseShort 平空仓
 func (t *FuturesTrader) CloseShort(symbol string, quantity float64) (map[string]interface{}, error) {
-	// 如果数量为0，获取当前持仓数量
+	// 如果数量为0，获取全部持仓数量
 	if quantity == 0 {
 		positions, err := t.GetPositions()
 		if err != nil {
 			return nil, err
 		}
-
 		for _, pos := range positions {
 			if pos["symbol"] == symbol && pos["side"] == "short" {
 				quantity = -pos["positionAmt"].(float64) // 空仓数量是负的，取绝对值
 				break
 			}
 		}
-
 		if quantity == 0 {
 			return nil, fmt.Errorf("没有找到 %s 的空仓", symbol)
 		}
@@ -520,9 +524,12 @@ func (t *FuturesTrader) CloseShort(symbol string, quantity float64) (map[string]
 
 	log.Printf("✓ 平空仓成功: %s 数量: %s", symbol, quantityStr)
 
-	// 平仓后取消该币种的所有挂单（止损止盈单）
+	// 取消该币种的所有挂单（包括止损止盈）
+	// 注意：部分平仓时，auto_trader.go 会负责用正确的数量重新创建 SL/TP 订单
 	if err := t.CancelAllOrders(symbol); err != nil {
 		log.Printf("  ⚠ 取消挂单失败: %v", err)
+	} else {
+		log.Printf(logMsgCancelledAllOrders, symbol)
 	}
 
 	result := make(map[string]interface{})
@@ -642,7 +649,7 @@ func (t *FuturesTrader) CancelAllOrders(symbol string) error {
 		return fmt.Errorf("取消挂单失败: %w", err)
 	}
 
-	log.Printf("  ✓ 已取消 %s 的所有挂单", symbol)
+	log.Printf(logMsgCancelledAllOrders, symbol)
 	return nil
 }
 
@@ -739,11 +746,15 @@ func (t *FuturesTrader) SetStopLoss(symbol string, positionSide string, quantity
 		return err
 	}
 
+	// 计算 Stop Limit Price
+	limitPrice := CalculateStopLimitPrice(positionSide, stopPrice, 0)
+
 	_, err = t.client.NewCreateOrderService().
 		Symbol(symbol).
 		Side(side).
 		PositionSide(posSide).
-		Type(futures.OrderTypeStopMarket).
+		Type(futures.OrderTypeStop).
+		Price(fmt.Sprintf("%.8f", limitPrice)).
 		StopPrice(fmt.Sprintf("%.8f", stopPrice)).
 		Quantity(quantityStr).
 		WorkingType(futures.WorkingTypeContractPrice).
@@ -777,11 +788,15 @@ func (t *FuturesTrader) SetTakeProfit(symbol string, positionSide string, quanti
 		return err
 	}
 
+	// 计算 Stop Limit Price (Take Profit 也使用相同的逻辑确保成交)
+	limitPrice := CalculateStopLimitPrice(positionSide, takeProfitPrice, 0)
+
 	_, err = t.client.NewCreateOrderService().
 		Symbol(symbol).
 		Side(side).
 		PositionSide(posSide).
-		Type(futures.OrderTypeTakeProfitMarket).
+		Type(futures.OrderTypeTakeProfit).
+		Price(fmt.Sprintf("%.8f", limitPrice)).
 		StopPrice(fmt.Sprintf("%.8f", takeProfitPrice)).
 		Quantity(quantityStr).
 		WorkingType(futures.WorkingTypeContractPrice).

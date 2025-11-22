@@ -6,6 +6,7 @@ import { EquityChart } from '../components/EquityChart'
 import AILearning from '../components/AILearning'
 import RecordLimitSelector from '../components/RecordLimitSelector'
 import FilterToggle from '../components/FilterToggle'
+import { PromptModal } from '../components/traders/PromptModal'
 import { useLanguage } from '../contexts/LanguageContext'
 import { useAuth } from '../contexts/AuthContext'
 import { t, type Language } from '../i18n/translations'
@@ -21,6 +22,7 @@ import {
   Check,
   X,
   XCircle,
+  Eye,
 } from 'lucide-react'
 import { stripLeadingIcons } from '../lib/text'
 import type {
@@ -68,6 +70,9 @@ export default function TraderDashboard() {
     return saved ? JSON.parse(saved) : false
   })
 
+  // Prompt Modal 状态
+  const [showPromptModal, setShowPromptModal] = useState(false)
+
   // 当 limit 变化时保存到 localStorage
   const handleLimitChange = (newLimit: number) => {
     setDecisionLimit(newLimit)
@@ -87,6 +92,7 @@ export default function TraderDashboard() {
     {
       refreshInterval: 10000,
       shouldRetryOnError: false,
+      revalidateOnMount: true, // 强制每次挂载时重新获取，确保 system_prompt 等新字段存在
     }
   )
 
@@ -372,8 +378,15 @@ export default function TraderDashboard() {
             </span>
           </span>
           <span className="hidden sm:inline">•</span>
-          <span className="whitespace-nowrap">
+          <span className="whitespace-nowrap flex items-center gap-1">
             Prompt: <span className="font-semibold" style={{ color: highlightColor }}>{selectedTrader.system_prompt_template || '-'}</span>
+              <button
+                onClick={() => setShowPromptModal(true)}
+                className="p-1 rounded hover:bg-gray-700 transition-colors"
+                title={t('viewPrompt', language)}
+              >
+                <Eye className="w-4 h-4" style={{ color: highlightColor }} />
+              </button>
           </span>
           {status && (
             <>
@@ -682,6 +695,15 @@ export default function TraderDashboard() {
       <div className="mb-6 animate-slide-in" style={{ animationDelay: '0.3s' }}>
         <AILearning traderId={selectedTrader.trader_id} />
       </div>
+
+      {/* Prompt Modal */}
+      {showPromptModal && selectedTrader.system_prompt && (
+        <PromptModal
+          prompt={selectedTrader.system_prompt}
+          onClose={() => setShowPromptModal(false)}
+          language={language}
+        />
+      )}
     </div>
   )
 }

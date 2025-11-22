@@ -68,6 +68,9 @@ export const translations = {
     newTakeProfit: 'New Take Profit',
     closePercentage: 'Close Percentage',
     filterOnlyWithActions: 'Has Actions',
+    viewPrompt: 'View Prompt',
+    currentPrompt: 'Current System Prompt',
+    close: 'Close',
 
     // Equity Chart
     accountEquityCurve: 'Account Equity Curve',
@@ -1088,6 +1091,9 @@ export const translations = {
     closePercentage: '平仓比例',
     expand: '▶ 展开',
     filterOnlyWithActions: '有操作',
+    viewPrompt: '查看 Prompt',
+    currentPrompt: '当前 System Prompt',
+    close: '关闭',
 
     // Equity Chart
     accountEquityCurve: '账户净值曲线',

@@ -31,20 +31,7 @@ export function LandingPage() {
         onLanguageChange={setLanguage}
         user={user}
         onLogout={logout}
-        onPageChange={(page) => {
-          console.log('LandingPage onPageChange called with:', page)
-          if (page === 'competition') {
-            window.location.href = '/competition'
-          } else if (page === 'traders') {
-            window.location.href = '/traders'
-          } else if (page === 'trader') {
-            window.location.href = '/dashboard'
-          } else if (page === 'backtest') {
-            window.location.href = '/backtest'
-          } else if (page === 'faq') {
-            window.location.href = '/faq'
-          }
-        }}
+        // 不传 onPageChange，让 HeaderBar 使用 window.location.href fallback
       />
       <div
         className="min-h-screen px-4 sm:px-6 lg:px-8"

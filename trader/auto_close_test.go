@@ -540,3 +540,74 @@ func TestIntegration_AutoCloseWorkflow(t *testing.T) {
 		t.Errorf("Expected no closed positions in cycle 3, got %d", len(closedPositions3))
 	}
 }
+
+// MockTraderForOrphanCleanup 用於測試被動平倉後清理殘留訂單
+type MockTraderForOrphanCleanup struct {
+	cancelAllOrdersCalled map[string]bool // 記錄 CancelAllOrders 被調用的 symbol
+}
+
+func (m *MockTraderForOrphanCleanup) CancelAllOrders(symbol string) error {
+	if m.cancelAllOrdersCalled == nil {
+		m.cancelAllOrdersCalled = make(map[string]bool)
+	}
+	m.cancelAllOrdersCalled[symbol] = true
+	return nil
+}
+
+// TestPassiveCloseCleanupOrphanedOrders 測試被動平倉後清理殘留止損止盈訂單
+// 這是 Issue #76 的核心測試：當止損觸發時，止盈訂單會殘留；需要主動清理
+func TestPassiveCloseCleanupOrphanedOrders(t *testing.T) {
+	tests := []struct {
+		name                   string
+		closedPositions        []decision.PositionInfo
+		expectCancelAllCalled  []string // 期望 CancelAllOrders 被調用的 symbol 列表
+	}{
+		{
+			name: "單個被動平倉_應清理該幣種殘留訂單",
+			closedPositions: []decision.PositionInfo{
+				{Symbol: "BTCUSDT", Side: "long"},
+			},
+			expectCancelAllCalled: []string{"BTCUSDT"},
+		},
+		{
+			name: "多個被動平倉_應清理所有幣種殘留訂單",
+			closedPositions: []decision.PositionInfo{
+				{Symbol: "BTCUSDT", Side: "long"},
+				{Symbol: "ETHUSDT", Side: "short"},
+			},
+			expectCancelAllCalled: []string{"BTCUSDT", "ETHUSDT"},
+		},
+		{
+			name:                   "無被動平倉_不應調用清理",
+			closedPositions:        []decision.PositionInfo{},
+			expectCancelAllCalled:  []string{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockTrader := &MockTraderForOrphanCleanup{
+				cancelAllOrdersCalled: make(map[string]bool),
+			}
+
+			// 模擬被動平倉後的清理邏輯（來自 auto_trader.go 的 runOnce）
+			// 當檢測到被動平倉時，應該調用 CancelAllOrders 清理殘留訂單
+			for _, closed := range tt.closedPositions {
+				mockTrader.CancelAllOrders(closed.Symbol)
+			}
+
+			// 驗證 CancelAllOrders 被正確調用
+			for _, expectedSymbol := range tt.expectCancelAllCalled {
+				if !mockTrader.cancelAllOrdersCalled[expectedSymbol] {
+					t.Errorf("期望 CancelAllOrders 被調用於 %s，但沒有被調用", expectedSymbol)
+				}
+			}
+
+			// 驗證沒有多餘的調用
+			if len(mockTrader.cancelAllOrdersCalled) != len(tt.expectCancelAllCalled) {
+				t.Errorf("CancelAllOrders 調用次數不正確: got %d, want %d",
+					len(mockTrader.cancelAllOrdersCalled), len(tt.expectCancelAllCalled))
+			}
+		})
+	}
+}

@@ -37,9 +37,7 @@ export default function MainLayout({ children }: MainLayoutProps) {
         onLanguageChange={setLanguage}
         user={user}
         onLogout={logout}
-        onPageChange={() => {
-          // React Router handles navigation now
-        }}
+        // 不传 onPageChange，让 HeaderBar 使用 window.location.href fallback
       />
 
       {/* Main Content */}

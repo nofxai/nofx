@@ -111,6 +111,27 @@ func TestRealFatal_Documentation(t *testing.T) {
 	// → 不会用错误的策略进行交易 → 100万资金安全 ✅
 }
 
+// TestBuildSystemPromptPartialCloseRequiresSLTP 测试 partial_close 必须要求 new_stop_loss 和 new_take_profit
+func TestBuildSystemPromptPartialCloseRequiresSLTP(t *testing.T) {
+	prompt := buildSystemPrompt(1000.0, 10, 5, "default")
+
+	// 验证 partial_close 指令中包含 new_stop_loss 和 new_take_profit 的要求
+	// 这是 Issue #70 的修复：部分平仓后必须重新设置止损止盈
+	if !strings.Contains(prompt, "partial_close") {
+		t.Fatal("Prompt 缺少 partial_close action")
+	}
+
+	// 检查 partial_close 必填字段中是否包含 new_stop_loss 和 new_take_profit
+	if !strings.Contains(prompt, "partial_close") || !strings.Contains(prompt, "new_stop_loss") || !strings.Contains(prompt, "new_take_profit") {
+		t.Error("Prompt 中 partial_close 应该要求 new_stop_loss 和 new_take_profit（Issue #70 修复）")
+	}
+
+	// 检查是否有警告说明原订单会被取消
+	if !strings.Contains(prompt, "部分平仓后原订单会被取消") {
+		t.Error("Prompt 应该警告 AI 部分平仓后原订单会被取消")
+	}
+}
+
 // TestGetPromptTemplate_PathTraversalProtection 测试路径遍历攻击防护
 func TestGetPromptTemplate_PathTraversalProtection(t *testing.T) {
 	maliciousNames := []string{

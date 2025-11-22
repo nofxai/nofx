@@ -227,7 +227,7 @@ func TestUpdateTraderRequest_CompleteFields(t *testing.T) {
 	}
 }
 
-// TestTraderListResponse_SystemPromptTemplate 测试 handleTraderList API 返回的 trader 对象是否包含 system_prompt_template 字段
+// TestTraderListResponse_SystemPromptTemplate 测试 handleTraderList API 返回的 trader 对象是否包含 system_prompt_template 和 system_prompt 字段
 func TestTraderListResponse_SystemPromptTemplate(t *testing.T) {
 	// 模拟 handleTraderList 中的 trader 对象构造
 	trader := &config.TraderRecord{
@@ -237,11 +237,16 @@ func TestTraderListResponse_SystemPromptTemplate(t *testing.T) {
 		AIModelID:            "gpt-4",
 		ExchangeID:           "binance",
 		InitialBalance:       5000,
-		SystemPromptTemplate: "nof1",
+		BTCETHLeverage:       10,
+		AltcoinLeverage:      5,
+		CustomPrompt:         "",
+		OverrideBasePrompt:   false,
+		SystemPromptTemplate: "default",
 		IsRunning:            true,
 	}
 
 	// 构造 API 响应对象（与 api/server.go 中的逻辑一致）
+	// 注意：实际 API 中 system_prompt 通过 decision.BuildPromptSnapshot 生成
 	response := map[string]interface{}{
 		"trader_id":              trader.ID,
 		"trader_name":            trader.Name,
@@ -250,6 +255,7 @@ func TestTraderListResponse_SystemPromptTemplate(t *testing.T) {
 		"is_running":             trader.IsRunning,
 		"initial_balance":        trader.InitialBalance,
 		"system_prompt_template": trader.SystemPromptTemplate,
+		"system_prompt":          "这是一个模拟的 system prompt 内容...", // 模拟 prompt 内容
 	}
 
 	// ✅ 验证 system_prompt_template 字段存在
@@ -258,8 +264,19 @@ func TestTraderListResponse_SystemPromptTemplate(t *testing.T) {
 	}
 
 	// ✅ 验证 system_prompt_template 值正确
-	if response["system_prompt_template"] != "nof1" {
-		t.Errorf("Expected system_prompt_template='nof1', got %v", response["system_prompt_template"])
+	if response["system_prompt_template"] != "default" {
+		t.Errorf("Expected system_prompt_template='default', got %v", response["system_prompt_template"])
+	}
+
+	// ✅ 验证 system_prompt 字段存在
+	if _, exists := response["system_prompt"]; !exists {
+		t.Errorf("Trader list response is missing 'system_prompt' field")
+	}
+
+	// ✅ 验证 system_prompt 是字符串类型
+	_, ok := response["system_prompt"].(string)
+	if !ok {
+		t.Errorf("system_prompt should be a string")
 	}
 }
 

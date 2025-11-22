@@ -958,3 +958,48 @@ func TestUpdateAIModel_EmptyAPIKeyShouldNotOverwrite(t *testing.T) {
 		}
 	}
 }
+
+// TestDefaultAIModels 测试默认 AI 模型配置是否正确初始化
+// 验证 Issue #78 的修复：系统应支持 deepseek, qwen, openai, gemini, groq 五种模型
+// 注意：默认 API URL 由 mcp 客户端自动处理，不存储在数据库中
+func TestDefaultAIModels(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	// 获取 default 用户的 AI 模型配置
+	models, err := db.GetAIModels("default")
+	if err != nil {
+		t.Fatalf("获取默认 AI 模型失败: %v", err)
+	}
+
+	// 期望的模型列表
+	expectedModels := []string{"deepseek", "qwen", "openai", "gemini", "groq"}
+
+	// 验证所有期望的模型都存在
+	foundModels := make(map[string]bool)
+	for _, model := range models {
+		foundModels[model.ID] = true
+	}
+
+	// 验证所有期望的模型都被找到
+	for _, modelID := range expectedModels {
+		if !foundModels[modelID] {
+			t.Errorf("期望的模型 %s 未找到", modelID)
+		}
+	}
+
+	// 验证 anthropic 不存在
+	if foundModels["anthropic"] {
+		t.Error("Anthropic 模型不应该存在（已移除）")
+	}
+
+	// 验证模型数量
+	if len(models) != len(expectedModels) {
+		t.Errorf("期望 %d 个模型，实际 %d 个", len(expectedModels), len(models))
+	}
+
+	t.Logf("✅ 验证通过：找到 %d 个默认 AI 模型", len(models))
+	for _, m := range models {
+		t.Logf("   - %s (%s)", m.ID, m.Provider)
+	}
+}

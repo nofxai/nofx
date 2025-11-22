@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"log"
 	"math"
+	nofxconfig "nofx/config"
 	"nofx/decision"
 	"nofx/logger"
 	"nofx/market"
 	"nofx/mcp"
 	"nofx/pool"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -97,8 +99,9 @@ type AutoTrader struct {
 	lastResetTime         time.Time
 	stopUntil             time.Time
 	isRunning             bool
-	startTime             time.Time                        // 系统启动时间
-	callCount             int                              // AI调用次数
+	startTime             time.Time          // 系统启动时间
+	callCount             int                // AI调用次数
+	statusMutex           sync.RWMutex       // 保护 isRunning, startTime, callCount 的并发访问
 	positionFirstSeenTime map[string]int64                 // 持仓首次出现时间 (symbol_side -> timestamp毫秒)
 	lastPositions         map[string]decision.PositionInfo // 上一次周期的持仓快照 (用于检测被动平仓)
 	positionStopLoss      map[string]float64               // 持仓止损价格 (symbol_side -> stop_loss_price)
@@ -134,20 +137,24 @@ func NewAutoTrader(config AutoTraderConfig, database interface{}, userID string)
 	// 初始化AI
 	if config.AIModel == "custom" {
 		// 使用自定义API
-		mcpClient.SetAPIKey(config.CustomAPIKey, config.CustomAPIURL, config.CustomModelName)
+		mcpClient.SetAPIKey(config.CustomAPIKey, config.CustomAPIURL, config.CustomModelName, "custom")
 		log.Printf("🤖 [%s] 使用自定义AI API: %s (模型: %s)", config.Name, config.CustomAPIURL, config.CustomModelName)
 	} else if config.AIModel == "openai" {
-		// 使用 OpenAI 兼容 API
-		mcpClient.SetAPIKey(config.CustomAPIKey, config.CustomAPIURL, config.CustomModelName)
-		log.Printf("🤖 [%s] 使用 OpenAI API: %s (模型: %s)", config.Name, config.CustomAPIURL, config.CustomModelName)
-	} else if config.AIModel == "anthropic" {
-		// 使用 Anthropic 兼容 API
-		mcpClient.SetAPIKey(config.CustomAPIKey, config.CustomAPIURL, config.CustomModelName)
-		log.Printf("🤖 [%s] 使用 Anthropic API: %s (模型: %s)", config.Name, config.CustomAPIURL, config.CustomModelName)
+		// 使用 OpenAI API（URL 为空时使用默认）
+		mcpClient.SetAPIKey(config.CustomAPIKey, config.CustomAPIURL, config.CustomModelName, "openai")
+		log.Printf("🤖 [%s] 使用 OpenAI API (模型: %s)", config.Name, config.CustomModelName)
+	} else if config.AIModel == "gemini" {
+		// 使用 Google Gemini OpenAI 兼容 API（URL 为空时使用默认）
+		mcpClient.SetAPIKey(config.CustomAPIKey, config.CustomAPIURL, config.CustomModelName, "gemini")
+		log.Printf("🤖 [%s] 使用 Gemini API (模型: %s)", config.Name, config.CustomModelName)
+	} else if config.AIModel == "groq" {
+		// 使用 Groq OpenAI 兼容 API（URL 为空时使用默认）
+		mcpClient.SetAPIKey(config.CustomAPIKey, config.CustomAPIURL, config.CustomModelName, "groq")
+		log.Printf("🤖 [%s] 使用 Groq API (模型: %s)", config.Name, config.CustomModelName)
 	} else if config.UseQwen || config.AIModel == "qwen" {
 		// 使用Qwen (支持自定义URL和Model)
 		mcpClient = mcp.NewQwenClient()
-		mcpClient.SetAPIKey(config.QwenKey, config.CustomAPIURL, config.CustomModelName)
+		mcpClient.SetAPIKey(config.QwenKey, config.CustomAPIURL, config.CustomModelName, "qwen")
 		if config.CustomAPIURL != "" || config.CustomModelName != "" {
 			log.Printf("🤖 [%s] 使用阿里云Qwen AI (自定义URL: %s, 模型: %s)", config.Name, config.CustomAPIURL, config.CustomModelName)
 		} else {
@@ -156,11 +163,23 @@ func NewAutoTrader(config AutoTraderConfig, database interface{}, userID string)
 	} else {
 		// 默认使用DeepSeek (支持自定义URL和Model)
 		mcpClient = mcp.NewDeepSeekClient()
-		mcpClient.SetAPIKey(config.DeepSeekKey, config.CustomAPIURL, config.CustomModelName)
+		mcpClient.SetAPIKey(config.DeepSeekKey, config.CustomAPIURL, config.CustomModelName, "deepseek")
 		if config.CustomAPIURL != "" || config.CustomModelName != "" {
 			log.Printf("🤖 [%s] 使用DeepSeek AI (自定义URL: %s, 模型: %s)", config.Name, config.CustomAPIURL, config.CustomModelName)
 		} else {
 			log.Printf("🤖 [%s] 使用DeepSeek AI", config.Name)
+		}
+	}
+
+	// 从数据库读取 AI Temperature 配置
+	if database != nil {
+		if db, ok := database.(*nofxconfig.Database); ok && db != nil {
+			if tempStr, err := db.GetSystemConfig("ai_temperature"); err == nil && tempStr != "" {
+				if temp, err := strconv.ParseFloat(tempStr, 64); err == nil && temp >= 0 && temp <= 1 {
+					mcpClient.SetTemperature(temp)
+					log.Printf("🌡️  [%s] AI Temperature: %.2f", config.Name, temp)
+				}
+			}
 		}
 	}
 
@@ -254,9 +273,11 @@ func NewAutoTrader(config AutoTraderConfig, database interface{}, userID string)
 
 // Run 运行自动交易主循环
 func (at *AutoTrader) Run() error {
+	at.statusMutex.Lock()
 	at.isRunning = true
 	at.stopMonitorCh = make(chan struct{})
 	at.startTime = time.Now()
+	at.statusMutex.Unlock()
 
 	log.Println("🚀 AI驱动自动交易系统启动")
 	log.Printf("💰 初始余额: %.2f USDT", at.initialBalance)
@@ -276,7 +297,7 @@ func (at *AutoTrader) Run() error {
 		log.Printf("❌ 执行失败: %v", err)
 	}
 
-	for at.isRunning {
+	for at.IsRunning() {
 		select {
 		case <-ticker.C:
 			if err := at.runCycle(); err != nil {
@@ -293,18 +314,30 @@ func (at *AutoTrader) Run() error {
 
 // Stop 停止自动交易
 func (at *AutoTrader) Stop() {
+	at.statusMutex.Lock()
 	if !at.isRunning {
+		at.statusMutex.Unlock()
 		return
 	}
 	at.isRunning = false
+	at.statusMutex.Unlock()
 	close(at.stopMonitorCh) // 通知监控goroutine停止
 	at.monitorWg.Wait()     // 等待监控goroutine结束
 	log.Println("⏹ 自动交易系统停止")
 }
 
+// IsRunning 返回当前运行状态（线程安全）
+func (at *AutoTrader) IsRunning() bool {
+	at.statusMutex.RLock()
+	defer at.statusMutex.RUnlock()
+	return at.isRunning
+}
+
 // runCycle 运行一个交易周期（使用AI全权决策）
 func (at *AutoTrader) runCycle() error {
+	at.statusMutex.Lock()
 	at.callCount++
+	at.statusMutex.Unlock()
 
 	log.Print("\n" + strings.Repeat("=", 70) + "\n")
 	log.Printf("⏰ %s - AI决策周期 #%d", time.Now().Format("2006-01-02 15:04:05"), at.callCount)
@@ -416,6 +449,17 @@ func (at *AutoTrader) runCycle() error {
 				action.Price, // 使用真实成交价格（已矫正）
 				pnlPct,
 				reasonCN)
+		}
+
+		// ✅ 清理被动平仓后残留的止损止盈订单 (Fix #76)
+		// 当止损触发时，止盈订单会残留；当止盈触发时，止损订单会残留
+		// 需要主动取消这些残留订单，避免订单累积
+		for _, closed := range closedPositions {
+			if err := at.trader.CancelAllOrders(closed.Symbol); err != nil {
+				log.Printf("  ⚠️ 清理 %s 残留订单失败: %v", closed.Symbol, err)
+			} else {
+				log.Printf("  🧹 已清理 %s 的残留止损止盈订单", closed.Symbol)
+			}
 		}
 	}
 
@@ -1089,8 +1133,12 @@ func (at *AutoTrader) executeUpdateStopLossWithRecord(decision *decision.Decisio
 		return nil
 	}
 
-	// 取消旧的止损单（只删除止损单，不影响止盈单）
-	// 注意：如果存在双向持仓，这会删除两个方向的止损单
+	// ⚠️ Save-Restore Pattern: 保存当前止盈价格，因为某些交易所（如 Hyperliquid）
+	// 取消止损时会连带取消所有挂单（包括止盈），需要在设置新止损后恢复止盈
+	savedTakeProfit := at.positionTakeProfit[posKey]
+
+	// 取消旧的止损单
+	// 注意：Hyperliquid 会删除所有挂单，但我们会在后面恢复止盈
 	if err := at.trader.CancelStopLossOrders(decision.Symbol); err != nil {
 		log.Printf("  ⚠ 取消旧止损单失败: %v", err)
 		// 不中断执行，继续设置新止损
@@ -1107,6 +1155,19 @@ func (at *AutoTrader) executeUpdateStopLossWithRecord(decision *decision.Decisio
 
 	// 更新内存中的止损价格
 	at.positionStopLoss[posKey] = decision.NewStopLoss
+
+	// ⚠️ Save-Restore: 仅 Hyperliquid 需要恢复被误删的止盈单
+	// 因为 Hyperliquid 的 CancelStopLossOrders 会删除所有挂单（包括止盈）
+	// 其他交易所（如 Binance）的 CancelStopLossOrders 只删除止损，不需要恢复
+	if at.exchange == "hyperliquid" && savedTakeProfit > 0 {
+		log.Printf("  🔄 [Hyperliquid Restore] 检测到止盈单被误删，正在恢复止盈: %.2f", savedTakeProfit)
+		if err := at.trader.SetTakeProfit(decision.Symbol, positionSide, quantity, savedTakeProfit); err != nil {
+			log.Printf("  ⚠️ [Restore] 恢复止盈单失败: %v（止盈可能丢失，请检查）", err)
+			// 不中断流程，但记录警告
+		} else {
+			log.Printf("  ✓ [Restore] 止盈单已恢复: %.2f", savedTakeProfit)
+		}
+	}
 
 	return nil
 }
@@ -1186,8 +1247,12 @@ func (at *AutoTrader) executeUpdateTakeProfitWithRecord(decision *decision.Decis
 		return nil
 	}
 
-	// 取消旧的止盈单（只删除止盈单，不影响止损单）
-	// 注意：如果存在双向持仓，这会删除两个方向的止盈单
+	// ⚠️ Save-Restore Pattern: 保存当前止损价格，因为某些交易所（如 Hyperliquid）
+	// 取消止盈时会连带取消所有挂单（包括止损），需要在设置新止盈后恢复止损
+	savedStopLoss := at.positionStopLoss[posKey]
+
+	// 取消旧的止盈单
+	// 注意：Hyperliquid 会删除所有挂单，但我们会在后面恢复止损
 	if err := at.trader.CancelTakeProfitOrders(decision.Symbol); err != nil {
 		log.Printf("  ⚠ 取消旧止盈单失败: %v", err)
 		// 不中断执行，继续设置新止盈
@@ -1204,6 +1269,19 @@ func (at *AutoTrader) executeUpdateTakeProfitWithRecord(decision *decision.Decis
 
 	// 更新内存中的止盈价格
 	at.positionTakeProfit[posKey] = decision.NewTakeProfit
+
+	// ⚠️ Save-Restore: 仅 Hyperliquid 需要恢复被误删的止损单
+	// 因为 Hyperliquid 的 CancelTakeProfitOrders 会删除所有挂单（包括止损）
+	// 其他交易所（如 Binance）的 CancelTakeProfitOrders 只删除止盈，不需要恢复
+	if at.exchange == "hyperliquid" && savedStopLoss > 0 {
+		log.Printf("  🔄 [Hyperliquid Restore] 检测到止损单被误删，正在恢复止损: %.2f", savedStopLoss)
+		if err := at.trader.SetStopLoss(decision.Symbol, positionSide, quantity, savedStopLoss); err != nil {
+			log.Printf("  ⚠️ [Restore] 恢复止损单失败: %v（止损可能丢失，请检查）", err)
+			// 不中断流程，但记录警告
+		} else {
+			log.Printf("  ✓ [Restore] 止损单已恢复: %.2f", savedStopLoss)
+		}
+	}
 
 	return nil
 }
@@ -1315,30 +1393,54 @@ func (at *AutoTrader) executePartialCloseWithRecord(decision *decision.Decision,
 		log.Printf("  ⚠️ 部分平仓成交价验证失败: %v", err)
 	}
 
-	// ✅ Step 4: 恢复止盈止损（防止剩余仓位裸奔）
-	// 重要：币安等交易所在部分平仓后会自动取消原有的 TP/SL 订单（因为数量不匹配）
-	// 如果 AI 提供了新的止损止盈价格，则为剩余仓位重新设置保护
-	if decision.NewStopLoss > 0 {
-		log.Printf("  → 为剩余仓位 %.4f 恢复止损单: %.2f", remainingQuantity, decision.NewStopLoss)
-		err = at.trader.SetStopLoss(decision.Symbol, positionSide, remainingQuantity, decision.NewStopLoss)
+	// ✅ Step 4: 重新创建止盈止损订单（使用剩余数量）
+	// 部分平仓时，CloseLong/CloseShort 会取消所有挂单（因为原订单数量不正确）
+	// 需要用剩余数量重新创建 SL/TP 订单
+	// 优先使用 AI 提供的新价格，否则使用内存中缓存的原始价格
+	posKey := decision.Symbol + "_" + strings.ToLower(positionSide)
+	originalStopLoss := at.positionStopLoss[posKey]
+	originalTakeProfit := at.positionTakeProfit[posKey]
+
+	// 确定最终使用的 SL/TP 价格
+	finalStopLoss := decision.NewStopLoss
+	if finalStopLoss <= 0 {
+		finalStopLoss = originalStopLoss
+	}
+	finalTakeProfit := decision.NewTakeProfit
+	if finalTakeProfit <= 0 {
+		finalTakeProfit = originalTakeProfit
+	}
+
+	// 重新创建止损订单
+	if finalStopLoss > 0 {
+		if decision.NewStopLoss > 0 {
+			log.Printf("  → 设置剩余仓位 %.4f 的新止损价: %.4f (AI指定)", remainingQuantity, finalStopLoss)
+		} else {
+			log.Printf("  → 恢复剩余仓位 %.4f 的原止损价: %.4f", remainingQuantity, finalStopLoss)
+		}
+		err = at.trader.SetStopLoss(decision.Symbol, positionSide, remainingQuantity, finalStopLoss)
 		if err != nil {
-			log.Printf("  ⚠️ 恢复止损失败: %v（不影响平仓结果）", err)
+			log.Printf("  ⚠️ 设置止损失败: %v（不影响平仓结果）", err)
+		} else {
+			// ✅ 更新内存缓存，确保后续操作使用最新的 SL 价格
+			at.positionStopLoss[posKey] = finalStopLoss
 		}
 	}
 
-	if decision.NewTakeProfit > 0 {
-		log.Printf("  → 为剩余仓位 %.4f 恢复止盈单: %.2f", remainingQuantity, decision.NewTakeProfit)
-		err = at.trader.SetTakeProfit(decision.Symbol, positionSide, remainingQuantity, decision.NewTakeProfit)
-		if err != nil {
-			log.Printf("  ⚠️ 恢复止盈失败: %v（不影响平仓结果）", err)
+	// 重新创建止盈订单
+	if finalTakeProfit > 0 {
+		if decision.NewTakeProfit > 0 {
+			log.Printf("  → 设置剩余仓位 %.4f 的新止盈价: %.4f (AI指定)", remainingQuantity, finalTakeProfit)
+		} else {
+			log.Printf("  → 恢复剩余仓位 %.4f 的原止盈价: %.4f", remainingQuantity, finalTakeProfit)
 		}
-	}
-
-	// 如果 AI 没有提供新的止盈止损，记录警告
-	if decision.NewStopLoss <= 0 && decision.NewTakeProfit <= 0 {
-		log.Printf("  ⚠️⚠️⚠️ 警告: 部分平仓后AI未提供新的止盈止损价格")
-		log.Printf("  → 剩余仓位 %.4f (价值 %.2f USDT) 目前没有止盈止损保护", remainingQuantity, remainingValue)
-		log.Printf("  → 建议: 在 partial_close 决策中包含 new_stop_loss 和 new_take_profit 字段")
+		err = at.trader.SetTakeProfit(decision.Symbol, positionSide, remainingQuantity, finalTakeProfit)
+		if err != nil {
+			log.Printf("  ⚠️ 设置止盈失败: %v（不影响平仓结果）", err)
+		} else {
+			// ✅ 更新内存缓存，确保后续操作使用最新的 TP 价格
+			at.positionTakeProfit[posKey] = finalTakeProfit
+		}
 	}
 
 	return nil
@@ -1401,15 +1503,22 @@ func (at *AutoTrader) GetStatus() map[string]interface{} {
 		aiProvider = "Qwen"
 	}
 
+	// 使用读锁保护并发访问的字段
+	at.statusMutex.RLock()
+	isRunning := at.isRunning
+	startTime := at.startTime
+	callCount := at.callCount
+	at.statusMutex.RUnlock()
+
 	return map[string]interface{}{
 		"trader_id":       at.id,
 		"trader_name":     at.name,
 		"ai_model":        at.aiModel,
 		"exchange":        at.exchange,
-		"is_running":      at.isRunning,
-		"start_time":      at.startTime.Format(time.RFC3339),
-		"runtime_minutes": int(time.Since(at.startTime).Minutes()),
-		"call_count":      at.callCount,
+		"is_running":      isRunning,
+		"start_time":      startTime.Format(time.RFC3339),
+		"runtime_minutes": int(time.Since(startTime).Minutes()),
+		"call_count":      callCount,
 		"initial_balance": at.initialBalance,
 		"scan_interval":   at.config.ScanInterval.String(),
 		"stop_until":      at.stopUntil.Format(time.RFC3339),

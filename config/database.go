@@ -469,11 +469,17 @@ func (d *Database) initDefaultData() error {
 	}
 
 	// 初始化AI模型（使用default用户）
+	// 这些是系统支持的 AI 模型，用户可以从中选择并配置 API Key
+	// 注意：使用 INSERT OR IGNORE，新模型会自动添加，不会影响已有配置
+	// 默认 API URL 由 mcp 客户端自动处理，无需在数据库中存储
 	aiModels := []struct {
 		id, name, provider string
 	}{
 		{"deepseek", "DeepSeek", "deepseek"},
 		{"qwen", "Qwen", "qwen"},
+		{"openai", "OpenAI", "openai"},
+		{"gemini", "Google Gemini", "gemini"},
+		{"groq", "Groq", "groq"},
 	}
 
 	for _, model := range aiModels {

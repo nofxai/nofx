@@ -25,7 +25,7 @@ func NewQwenClient() AIClient {
 	}
 }
 
-func (qwenClient *QwenClient) SetAPIKey(apiKey string, customURL string, customModel string) {
+func (qwenClient *QwenClient) SetAPIKey(apiKey string, customURL string, customModel string, _ string) {
 	if qwenClient.Client == nil {
 		qwenClient.Client = New().(*Client)
 	}

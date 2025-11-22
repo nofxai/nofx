@@ -13,7 +13,7 @@ describe('FilterToggle', () => {
       />
     )
 
-    expect(screen.getByText('只显示有操作')).toBeInTheDocument()
+    expect(screen.getByText('有操作')).toBeInTheDocument()
   })
 
   it('should render with correct label in English', () => {
@@ -26,7 +26,7 @@ describe('FilterToggle', () => {
       />
     )
 
-    expect(screen.getByText('Only with actions')).toBeInTheDocument()
+    expect(screen.getByText('Has Actions')).toBeInTheDocument()
   })
 
   it('should show enabled state with yellow background', () => {

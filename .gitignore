@@ -57,6 +57,7 @@ eslint-*.json
 secrets/
 *.key
 *.pem
+*.pem.pub
 *.p12
 *.pfx
 rsa_key*

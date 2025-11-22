@@ -17,6 +17,8 @@ func configureMCPClient(cfg BacktestConfig, base mcp.AIClient) (mcp.AIClient, er
 
 	// Set default BaseURL for known providers if not specified
 	baseURL := strings.TrimSpace(cfg.AICfg.BaseURL)
+	// 为 DeepSeek 和 Qwen 设置默认 URL（它们有专用客户端）
+	// OpenAI/Gemini/Groq 的默认 URL 由 mcp.SetAPIKey 自动处理
 	if baseURL == "" {
 		switch provider {
 		case "deepseek":
@@ -37,7 +39,7 @@ func configureMCPClient(cfg BacktestConfig, base mcp.AIClient) (mcp.AIClient, er
 		if cfg.AICfg.APIKey == "" {
 			return nil, fmt.Errorf("api key is required")
 		}
-	case "deepseek", "qwen":
+	case "deepseek", "qwen", "openai", "gemini", "groq":
 		if cfg.AICfg.APIKey == "" {
 			return nil, fmt.Errorf("%s provider requires api key", provider)
 		}
@@ -50,7 +52,7 @@ func configureMCPClient(cfg BacktestConfig, base mcp.AIClient) (mcp.AIClient, er
 	}
 
 	// Use unified SetAPIKey method for all providers
-	client.SetAPIKey(cfg.AICfg.APIKey, baseURL, cfg.AICfg.Model)
+	client.SetAPIKey(cfg.AICfg.APIKey, baseURL, cfg.AICfg.Model, provider)
 
 	if cfg.AICfg.Temperature > 0 {
 		// no direct field, but we keep for completeness

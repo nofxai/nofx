@@ -25,7 +25,7 @@ func NewDeepSeekClient() AIClient {
 	}
 }
 
-func (dsClient *DeepSeekClient) SetAPIKey(apiKey string, customURL string, customModel string) {
+func (dsClient *DeepSeekClient) SetAPIKey(apiKey string, customURL string, customModel string, _ string) {
 	if dsClient.Client == nil {
 		dsClient.Client = New().(*Client)
 	}

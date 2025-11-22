@@ -206,7 +206,7 @@ export default function AILearning({ traderId }: AILearningProps) {
             {/* PromptHash 过滤开关 */}
             <div className="flex items-center gap-2">
               <label className="text-xs" style={{ color: '#848E9C' }}>
-                {language === 'zh' ? '仅当前提示词版本' : 'Current prompt version only'}
+                {language === 'zh' ? '仅当前提示词版本(最多100条)' : 'Current prompt only (max 100)'}
               </label>
               <button
                 onClick={() => handleFilterByPromptChange(!filterByPrompt)}

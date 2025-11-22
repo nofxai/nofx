@@ -68,10 +68,42 @@
    - 工具函数：≥ 80%
    - UI 组件：重要交互逻辑需要测试
 
-4. **例外情况**（无需 TDD）：
+4. **测试代码风格** - Table-Driven Tests：
+   - ✅ 如果多个测试用例只有输入数据不同，**必须使用表驱动测试**
+   - ❌ 禁止为每组数据写重复的测试函数
+   - 示例：
+     ```go
+     func TestCalculatePrice(t *testing.T) {
+         tests := []struct {
+             name     string
+             input    float64
+             expected float64
+         }{
+             {"正常价格", 100.0, 98.0},
+             {"边界值", 0.0, 0.0},
+             {"大数值", 10000.0, 9800.0},
+         }
+         for _, tt := range tests {
+             t.Run(tt.name, func(t *testing.T) {
+                 got := CalculatePrice(tt.input)
+                 assert.Equal(t, tt.expected, got)
+             })
+         }
+     }
+     ```
+
+5. **例外情况**（无需 TDD）：
    - 纯 UI 样式调整
    - 配置文件修改
    - 文档更新
+
+## Docker 操作规则 - CRITICAL ⚠️
+
+**docker compose 命令必须指定服务名**，只操作需要的服务：
+- 前端：`docker compose build nofx-frontend && docker compose up -d nofx-frontend`
+- 后端：`docker compose build nofx && docker compose up -d nofx`
+
+❌ 禁止 `docker compose down/up/restart` 不带服务名（会重启所有服务）
 
 ## 代码编辑规则
 

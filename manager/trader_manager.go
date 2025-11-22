@@ -1182,11 +1182,23 @@ func (tm *TraderManager) loadSingleTrader(traderCfg *config.TraderRecord, aiMode
 // RemoveTrader 从内存中移除指定的trader（不影响数据库）
 // 用于更新trader配置时强制重新加载
 func (tm *TraderManager) RemoveTrader(traderID string) {
-	tm.mu.Lock()
-	defer tm.mu.Unlock()
+	var traderToStop *trader.AutoTrader
 
-	if _, exists := tm.traders[traderID]; exists {
+	tm.mu.Lock()
+	if t, exists := tm.traders[traderID]; exists {
+		traderToStop = t
 		delete(tm.traders, traderID)
-		log.Printf("✓ Trader %s 已从内存中移除", traderID)
+		log.Printf("✓ Trader %s 已从内存映射中移除", traderID)
+	}
+	tm.mu.Unlock()
+
+	// 在锁外停止交易员，避免阻塞其他操作
+	if traderToStop != nil {
+		status := traderToStop.GetStatus()
+		if isRunning, ok := status["is_running"].(bool); ok && isRunning {
+			log.Printf("⏹ 正停止旧的交易员实例 %s ...", traderID)
+			traderToStop.Stop()
+			log.Printf("✓ 旧实例 %s 已停止", traderID)
+		}
 	}
 }

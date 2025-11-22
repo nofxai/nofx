@@ -1,6 +1,7 @@
 {
   "beta_mode": false,
   "registration_enabled": true,
+  "ai_temperature": 0.1,
   "leverage": {
     "btc_eth_leverage": 5,
     "altcoin_leverage": 5

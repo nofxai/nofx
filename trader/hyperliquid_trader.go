@@ -490,20 +490,18 @@ func (t *HyperliquidTrader) OpenShort(symbol string, quantity float64, leverage 
 
 // CloseLong 平多仓
 func (t *HyperliquidTrader) CloseLong(symbol string, quantity float64) (map[string]interface{}, error) {
-	// 如果数量为0，获取当前持仓数量
+	// 如果数量为0，获取全部持仓数量
 	if quantity == 0 {
 		positions, err := t.GetPositions()
 		if err != nil {
 			return nil, err
 		}
-
 		for _, pos := range positions {
 			if pos["symbol"] == symbol && pos["side"] == "long" {
 				quantity = pos["positionAmt"].(float64)
 				break
 			}
 		}
-
 		if quantity == 0 {
 			return nil, fmt.Errorf("没有找到 %s 的多仓", symbol)
 		}
@@ -547,35 +545,33 @@ func (t *HyperliquidTrader) CloseLong(symbol string, quantity float64) (map[stri
 
 	log.Printf("✓ 平多仓成功: %s 数量: %.4f", symbol, roundedQuantity)
 
-	// 平仓后取消该币种的所有挂单
+	// 取消该币种的所有挂单（包括止损止盈）
+	// 注意：部分平仓时，auto_trader.go 会负责用正确的数量重新创建 SL/TP 订单
 	if err := t.CancelAllOrders(symbol); err != nil {
 		log.Printf("  ⚠ 取消挂单失败: %v", err)
 	}
 
-	result := make(map[string]interface{})
-	result["orderId"] = 0
-	result["symbol"] = symbol
-	result["status"] = "FILLED"
-
-	return result, nil
+	return map[string]interface{}{
+		"orderId": 0,
+		"symbol":  symbol,
+		"status":  "FILLED",
+	}, nil
 }
 
 // CloseShort 平空仓
 func (t *HyperliquidTrader) CloseShort(symbol string, quantity float64) (map[string]interface{}, error) {
-	// 如果数量为0，获取当前持仓数量
+	// 如果数量为0，获取全部持仓数量
 	if quantity == 0 {
 		positions, err := t.GetPositions()
 		if err != nil {
 			return nil, err
 		}
-
 		for _, pos := range positions {
 			if pos["symbol"] == symbol && pos["side"] == "short" {
 				quantity = pos["positionAmt"].(float64)
 				break
 			}
 		}
-
 		if quantity == 0 {
 			return nil, fmt.Errorf("没有找到 %s 的空仓", symbol)
 		}
@@ -619,34 +615,34 @@ func (t *HyperliquidTrader) CloseShort(symbol string, quantity float64) (map[str
 
 	log.Printf("✓ 平空仓成功: %s 数量: %.4f", symbol, roundedQuantity)
 
-	// 平仓后取消该币种的所有挂单
+	// 取消该币种的所有挂单（包括止损止盈）
+	// 注意：部分平仓时，auto_trader.go 会负责用正确的数量重新创建 SL/TP 订单
 	if err := t.CancelAllOrders(symbol); err != nil {
 		log.Printf("  ⚠ 取消挂单失败: %v", err)
 	}
 
-	result := make(map[string]interface{})
-	result["orderId"] = 0
-	result["symbol"] = symbol
-	result["status"] = "FILLED"
-
-	return result, nil
+	return map[string]interface{}{
+		"orderId": 0,
+		"symbol":  symbol,
+		"status":  "FILLED",
+	}, nil
 }
 
-// CancelStopOrders 取消该币种的止盈/止
-
 // CancelStopLossOrders 仅取消止损单（Hyperliquid 暂无法区分止损和止盈，取消所有）
+// ⚠️ 注意：此实现会取消所有挂单（包括止盈单），调用方需要自行恢复被误删的止盈单
 func (t *HyperliquidTrader) CancelStopLossOrders(symbol string) error {
 	// Hyperliquid SDK 的 OpenOrder 结构不暴露 trigger 字段
 	// 无法区分止损和止盈单，因此取消该币种的所有挂单
-	log.Printf("  ⚠️ Hyperliquid 无法区分止损/止盈单，将取消所有挂单")
+	log.Printf("  ⚠️ [Hyperliquid] 无法区分止损/止盈单，将取消所有挂单（调用方需恢复止盈）")
 	return t.CancelStopOrders(symbol)
 }
 
 // CancelTakeProfitOrders 仅取消止盈单（Hyperliquid 暂无法区分止损和止盈，取消所有）
+// ⚠️ 注意：此实现会取消所有挂单（包括止损单），调用方需要自行恢复被误删的止损单
 func (t *HyperliquidTrader) CancelTakeProfitOrders(symbol string) error {
 	// Hyperliquid SDK 的 OpenOrder 结构不暴露 trigger 字段
 	// 无法区分止损和止盈单，因此取消该币种的所有挂单
-	log.Printf("  ⚠️ Hyperliquid 无法区分止损/止盈单，将取消所有挂单")
+	log.Printf("  ⚠️ [Hyperliquid] 无法区分止损/止盈单，将取消所有挂单（调用方需恢复止损）")
 	return t.CancelStopOrders(symbol)
 }
 
@@ -742,16 +738,20 @@ func (t *HyperliquidTrader) SetStopLoss(symbol string, positionSide string, quan
 	// ⚠️ 关键：价格也需要处理为5位有效数字
 	roundedStopPrice := t.roundPriceToSigfigs(stopPrice)
 
+	// 计算 Stop Limit Price
+	limitPrice := CalculateStopLimitPrice(positionSide, stopPrice, 0)
+	roundedLimitPrice := t.roundPriceToSigfigs(limitPrice)
+
 	// 创建止损单（Trigger Order）
 	order := hyperliquid.CreateOrderRequest{
 		Coin:  coin,
 		IsBuy: isBuy,
-		Size:  roundedQuantity,  // 使用四舍五入后的数量
-		Price: roundedStopPrice, // 使用处理后的价格
+		Size:  roundedQuantity,   // 使用四舍五入后的数量
+		Price: roundedLimitPrice, // 使用 Stop Limit 价格
 		OrderType: hyperliquid.OrderType{
 			Trigger: &hyperliquid.TriggerOrderType{
 				TriggerPx: roundedStopPrice,
-				IsMarket:  true,
+				IsMarket:  false,
 				Tpsl:      "sl", // stop loss
 			},
 		},
@@ -779,16 +779,20 @@ func (t *HyperliquidTrader) SetTakeProfit(symbol string, positionSide string, qu
 	// ⚠️ 关键：价格也需要处理为5位有效数字
 	roundedTakeProfitPrice := t.roundPriceToSigfigs(takeProfitPrice)
 
+	// 计算 Stop Limit Price (TP)
+	limitPrice := CalculateStopLimitPrice(positionSide, takeProfitPrice, 0)
+	roundedLimitPrice := t.roundPriceToSigfigs(limitPrice)
+
 	// 创建止盈单（Trigger Order）
 	order := hyperliquid.CreateOrderRequest{
 		Coin:  coin,
 		IsBuy: isBuy,
-		Size:  roundedQuantity,        // 使用四舍五入后的数量
-		Price: roundedTakeProfitPrice, // 使用处理后的价格
+		Size:  roundedQuantity,   // 使用四舍五入后的数量
+		Price: roundedLimitPrice, // 使用 Stop Limit 价格
 		OrderType: hyperliquid.OrderType{
 			Trigger: &hyperliquid.TriggerOrderType{
 				TriggerPx: roundedTakeProfitPrice,
-				IsMarket:  true,
+				IsMarket:  false,
 				Tpsl:      "tp", // take profit
 			},
 		},

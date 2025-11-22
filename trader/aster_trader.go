@@ -709,20 +709,18 @@ func (t *AsterTrader) OpenShort(symbol string, quantity float64, leverage int) (
 
 // CloseLong 平多单
 func (t *AsterTrader) CloseLong(symbol string, quantity float64) (map[string]interface{}, error) {
-	// 如果数量为0，获取当前持仓数量
+	// 如果数量为0，获取全部持仓数量
 	if quantity == 0 {
 		positions, err := t.GetPositions()
 		if err != nil {
 			return nil, err
 		}
-
 		for _, pos := range positions {
 			if pos["symbol"] == symbol && pos["side"] == "long" {
 				quantity = pos["positionAmt"].(float64)
 				break
 			}
 		}
-
 		if quantity == 0 {
 			return nil, fmt.Errorf("没有找到 %s 的多仓", symbol)
 		}
@@ -781,9 +779,12 @@ func (t *AsterTrader) CloseLong(symbol string, quantity float64) (map[string]int
 
 	log.Printf("✓ 平多仓成功: %s 数量: %s", symbol, qtyStr)
 
-	// 平仓后取消该币种的所有挂单(止损止盈单)
+	// 取消该币种的所有挂单（包括止损止盈）
+	// 注意：部分平仓时，auto_trader.go 会负责用正确的数量重新创建 SL/TP 订单
 	if err := t.CancelAllOrders(symbol); err != nil {
 		log.Printf("  ⚠ 取消挂单失败: %v", err)
+	} else {
+		log.Printf("  ✓ 已取消 %s 的所有挂单", symbol)
 	}
 
 	return result, nil
@@ -791,13 +792,12 @@ func (t *AsterTrader) CloseLong(symbol string, quantity float64) (map[string]int
 
 // CloseShort 平空单
 func (t *AsterTrader) CloseShort(symbol string, quantity float64) (map[string]interface{}, error) {
-	// 如果数量为0，获取当前持仓数量
+	// 如果数量为0，获取全部持仓数量
 	if quantity == 0 {
 		positions, err := t.GetPositions()
 		if err != nil {
 			return nil, err
 		}
-
 		for _, pos := range positions {
 			if pos["symbol"] == symbol && pos["side"] == "short" {
 				// Aster的GetPositions已经将空仓数量转换为正数，直接使用
@@ -805,7 +805,6 @@ func (t *AsterTrader) CloseShort(symbol string, quantity float64) (map[string]in
 				break
 			}
 		}
-
 		if quantity == 0 {
 			return nil, fmt.Errorf("没有找到 %s 的空仓", symbol)
 		}
@@ -864,9 +863,12 @@ func (t *AsterTrader) CloseShort(symbol string, quantity float64) (map[string]in
 
 	log.Printf("✓ 平空仓成功: %s 数量: %s", symbol, qtyStr)
 
-	// 平仓后取消该币种的所有挂单(止损止盈单)
+	// 取消该币种的所有挂单（包括止损止盈）
+	// 注意：部分平仓时，auto_trader.go 会负责用正确的数量重新创建 SL/TP 订单
 	if err := t.CancelAllOrders(symbol); err != nil {
 		log.Printf("  ⚠ 取消挂单失败: %v", err)
+	} else {
+		log.Printf("  ✓ 已取消 %s 的所有挂单", symbol)
 	}
 
 	return result, nil
@@ -984,12 +986,21 @@ func (t *AsterTrader) SetStopLoss(symbol string, positionSide string, quantity, 
 	priceStr := t.formatFloatWithPrecision(formattedPrice, prec.PricePrecision)
 	qtyStr := t.formatFloatWithPrecision(formattedQty, prec.QuantityPrecision)
 
+	// 计算并格式化 Stop Limit Price
+	limitPrice := CalculateStopLimitPrice(positionSide, stopPrice, 0)
+	formattedLimitPrice, err := t.formatPrice(symbol, limitPrice)
+	if err != nil {
+		return err
+	}
+	limitPriceStr := t.formatFloatWithPrecision(formattedLimitPrice, prec.PricePrecision)
+
 	params := map[string]interface{}{
 		"symbol":       symbol,
 		"positionSide": "BOTH",
-		"type":         "STOP_MARKET",
+		"type":         "STOP",
 		"side":         side,
 		"stopPrice":    priceStr,
+		"price":        limitPriceStr,
 		"quantity":     qtyStr,
 		"timeInForce":  "GTC",
 	}
@@ -1025,12 +1036,21 @@ func (t *AsterTrader) SetTakeProfit(symbol string, positionSide string, quantity
 	priceStr := t.formatFloatWithPrecision(formattedPrice, prec.PricePrecision)
 	qtyStr := t.formatFloatWithPrecision(formattedQty, prec.QuantityPrecision)
 
+	// 计算并格式化 Stop Limit Price (TP)
+	limitPrice := CalculateStopLimitPrice(positionSide, takeProfitPrice, 0)
+	formattedLimitPrice, err := t.formatPrice(symbol, limitPrice)
+	if err != nil {
+		return err
+	}
+	limitPriceStr := t.formatFloatWithPrecision(formattedLimitPrice, prec.PricePrecision)
+
 	params := map[string]interface{}{
 		"symbol":       symbol,
 		"positionSide": "BOTH",
-		"type":         "TAKE_PROFIT_MARKET",
+		"type":         "TAKE_PROFIT",
 		"side":         side,
 		"stopPrice":    priceStr,
+		"price":        limitPriceStr,
 		"quantity":     qtyStr,
 		"timeInForce":  "GTC",
 	}
