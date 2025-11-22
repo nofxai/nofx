@@ -1136,8 +1136,12 @@ func (at *AutoTrader) executeUpdateStopLossWithRecord(decision *decision.Decisio
 		return nil
 	}
 
-	// 取消旧的止损单（只删除止损单，不影响止盈单）
-	// 注意：如果存在双向持仓，这会删除两个方向的止损单
+	// ⚠️ Save-Restore Pattern: 保存当前止盈价格，因为某些交易所（如 Hyperliquid）
+	// 取消止损时会连带取消所有挂单（包括止盈），需要在设置新止损后恢复止盈
+	savedTakeProfit := at.positionTakeProfit[posKey]
+
+	// 取消旧的止损单
+	// 注意：Hyperliquid 会删除所有挂单，但我们会在后面恢复止盈
 	if err := at.trader.CancelStopLossOrders(decision.Symbol); err != nil {
 		log.Printf("  ⚠ 取消旧止损单失败: %v", err)
 		// 不中断执行，继续设置新止损
@@ -1154,6 +1158,19 @@ func (at *AutoTrader) executeUpdateStopLossWithRecord(decision *decision.Decisio
 
 	// 更新内存中的止损价格
 	at.positionStopLoss[posKey] = decision.NewStopLoss
+
+	// ⚠️ Save-Restore: 仅 Hyperliquid 需要恢复被误删的止盈单
+	// 因为 Hyperliquid 的 CancelStopLossOrders 会删除所有挂单（包括止盈）
+	// 其他交易所（如 Binance）的 CancelStopLossOrders 只删除止损，不需要恢复
+	if at.exchange == "hyperliquid" && savedTakeProfit > 0 {
+		log.Printf("  🔄 [Hyperliquid Restore] 检测到止盈单被误删，正在恢复止盈: %.2f", savedTakeProfit)
+		if err := at.trader.SetTakeProfit(decision.Symbol, positionSide, quantity, savedTakeProfit); err != nil {
+			log.Printf("  ⚠️ [Restore] 恢复止盈单失败: %v（止盈可能丢失，请检查）", err)
+			// 不中断流程，但记录警告
+		} else {
+			log.Printf("  ✓ [Restore] 止盈单已恢复: %.2f", savedTakeProfit)
+		}
+	}
 
 	return nil
 }
@@ -1233,8 +1250,12 @@ func (at *AutoTrader) executeUpdateTakeProfitWithRecord(decision *decision.Decis
 		return nil
 	}
 
-	// 取消旧的止盈单（只删除止盈单，不影响止损单）
-	// 注意：如果存在双向持仓，这会删除两个方向的止盈单
+	// ⚠️ Save-Restore Pattern: 保存当前止损价格，因为某些交易所（如 Hyperliquid）
+	// 取消止盈时会连带取消所有挂单（包括止损），需要在设置新止盈后恢复止损
+	savedStopLoss := at.positionStopLoss[posKey]
+
+	// 取消旧的止盈单
+	// 注意：Hyperliquid 会删除所有挂单，但我们会在后面恢复止损
 	if err := at.trader.CancelTakeProfitOrders(decision.Symbol); err != nil {
 		log.Printf("  ⚠ 取消旧止盈单失败: %v", err)
 		// 不中断执行，继续设置新止盈
@@ -1251,6 +1272,19 @@ func (at *AutoTrader) executeUpdateTakeProfitWithRecord(decision *decision.Decis
 
 	// 更新内存中的止盈价格
 	at.positionTakeProfit[posKey] = decision.NewTakeProfit
+
+	// ⚠️ Save-Restore: 仅 Hyperliquid 需要恢复被误删的止损单
+	// 因为 Hyperliquid 的 CancelTakeProfitOrders 会删除所有挂单（包括止损）
+	// 其他交易所（如 Binance）的 CancelTakeProfitOrders 只删除止盈，不需要恢复
+	if at.exchange == "hyperliquid" && savedStopLoss > 0 {
+		log.Printf("  🔄 [Hyperliquid Restore] 检测到止损单被误删，正在恢复止损: %.2f", savedStopLoss)
+		if err := at.trader.SetStopLoss(decision.Symbol, positionSide, quantity, savedStopLoss); err != nil {
+			log.Printf("  ⚠️ [Restore] 恢复止损单失败: %v（止损可能丢失，请检查）", err)
+			// 不中断流程，但记录警告
+		} else {
+			log.Printf("  ✓ [Restore] 止损单已恢复: %.2f", savedStopLoss)
+		}
+	}
 
 	return nil
 }

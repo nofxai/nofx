@@ -629,18 +629,20 @@ func (t *HyperliquidTrader) CloseShort(symbol string, quantity float64) (map[str
 }
 
 // CancelStopLossOrders 仅取消止损单（Hyperliquid 暂无法区分止损和止盈，取消所有）
+// ⚠️ 注意：此实现会取消所有挂单（包括止盈单），调用方需要自行恢复被误删的止盈单
 func (t *HyperliquidTrader) CancelStopLossOrders(symbol string) error {
 	// Hyperliquid SDK 的 OpenOrder 结构不暴露 trigger 字段
 	// 无法区分止损和止盈单，因此取消该币种的所有挂单
-	log.Printf("  ⚠️ Hyperliquid 无法区分止损/止盈单，将取消所有挂单")
+	log.Printf("  ⚠️ [Hyperliquid] 无法区分止损/止盈单，将取消所有挂单（调用方需恢复止盈）")
 	return t.CancelStopOrders(symbol)
 }
 
 // CancelTakeProfitOrders 仅取消止盈单（Hyperliquid 暂无法区分止损和止盈，取消所有）
+// ⚠️ 注意：此实现会取消所有挂单（包括止损单），调用方需要自行恢复被误删的止损单
 func (t *HyperliquidTrader) CancelTakeProfitOrders(symbol string) error {
 	// Hyperliquid SDK 的 OpenOrder 结构不暴露 trigger 字段
 	// 无法区分止损和止盈单，因此取消该币种的所有挂单
-	log.Printf("  ⚠️ Hyperliquid 无法区分止损/止盈单，将取消所有挂单")
+	log.Printf("  ⚠️ [Hyperliquid] 无法区分止损/止盈单，将取消所有挂单（调用方需恢复止损）")
 	return t.CancelStopOrders(symbol)
 }
 
