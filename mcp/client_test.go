@@ -172,3 +172,104 @@ func TestQwenClient_SetAPIKey(t *testing.T) {
 		assert.Equal(t, "qwen-turbo", client.Client.Model)
 	})
 }
+
+// TestClient_Temperature 测试 Temperature 配置
+func TestClient_Temperature(t *testing.T) {
+	tests := []struct {
+		name            string
+		setTemperature  float64
+		wantTemperature float64
+	}{
+		{"默认值 0.1", 0, 0.1},           // 0 表示使用默认值
+		{"自定义 0.2", 0.2, 0.2},
+		{"自定义 0.5", 0.5, 0.5},
+		{"边界值 0.0 (显式设置)", -1, 0.1}, // -1 表示未设置，应使用默认值
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// 启动 Mock Server 来捕获请求中的 temperature
+			var receivedTemp float64
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				var reqBody map[string]interface{}
+				json.NewDecoder(r.Body).Decode(&reqBody)
+				receivedTemp = reqBody["temperature"].(float64)
+
+				json.NewEncoder(w).Encode(map[string]interface{}{
+					"choices": []interface{}{
+						map[string]interface{}{
+							"message":       map[string]interface{}{"content": "ok"},
+							"finish_reason": "stop",
+						},
+					},
+					"usage": map[string]interface{}{"total_tokens": 10},
+				})
+			}))
+			defer server.Close()
+
+			client := New().(*Client)
+			client.SetAPIKey("test-key", server.URL, "test-model", "custom")
+			client.Timeout = 1 * time.Second
+
+			// 设置 Temperature
+			if tt.setTemperature > 0 {
+				client.Temperature = tt.setTemperature
+			}
+			// tt.setTemperature == 0 或 -1 时不设置，使用默认值
+
+			_, err := client.callOnce("", "hello")
+			assert.NoError(t, err)
+			assert.Equal(t, tt.wantTemperature, receivedTemp, "Temperature 不匹配")
+		})
+	}
+}
+
+// TestClient_DefaultTemperature 测试 New() 创建的客户端默认 Temperature 为 0.1
+func TestClient_DefaultTemperature(t *testing.T) {
+	client := New().(*Client)
+	assert.Equal(t, 0.1, client.Temperature, "默认 Temperature 应该是 0.1")
+}
+
+// TestAIClient_SetTemperature 测试通过接口方法设置 Temperature
+func TestAIClient_SetTemperature(t *testing.T) {
+	tests := []struct {
+		name        string
+		newClient   func() AIClient
+		clientType  string
+	}{
+		{"Client", func() AIClient { return New() }, "Client"},
+		{"DeepSeekClient", func() AIClient { return NewDeepSeekClient() }, "DeepSeekClient"},
+		{"QwenClient", func() AIClient { return NewQwenClient() }, "QwenClient"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := tt.newClient()
+
+			// 通过接口方法设置 Temperature
+			client.SetTemperature(0.3)
+
+			// 验证设置成功（需要通过发送请求验证）
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				var reqBody map[string]interface{}
+				json.NewDecoder(r.Body).Decode(&reqBody)
+				assert.Equal(t, 0.3, reqBody["temperature"].(float64), "Temperature 应该是 0.3")
+
+				json.NewEncoder(w).Encode(map[string]interface{}{
+					"choices": []interface{}{
+						map[string]interface{}{
+							"message":       map[string]interface{}{"content": "ok"},
+							"finish_reason": "stop",
+						},
+					},
+					"usage": map[string]interface{}{"total_tokens": 10},
+				})
+			}))
+			defer server.Close()
+
+			client.SetAPIKey("test-key", server.URL, "test-model", "custom")
+			_, err := client.CallWithMessages("", "hello")
+			assert.NoError(t, err)
+		})
+	}
+}

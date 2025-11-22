@@ -31,13 +31,14 @@ var (
 
 // Client AI API配置
 type Client struct {
-	Provider   string
-	APIKey     string
-	BaseURL    string
-	Model      string
-	Timeout    time.Duration
-	UseFullURL bool // 是否使用完整URL（不添加/chat/completions）
-	MaxTokens  int  // AI响应的最大token数
+	Provider    string
+	APIKey      string
+	BaseURL     string
+	Model       string
+	Timeout     time.Duration
+	UseFullURL  bool    // 是否使用完整URL（不添加/chat/completions）
+	MaxTokens   int     // AI响应的最大token数
+	Temperature float64 // AI 温度参数，控制输出随机性（0.0-1.0），默认 0.1
 }
 
 func New() AIClient {
@@ -54,11 +55,12 @@ func New() AIClient {
 
 	// 默认配置
 	return &Client{
-		Provider:  ProviderDeepSeek,
-		BaseURL:   DefaultDeepSeekBaseURL,
-		Model:     DefaultDeepSeekModel,
-		Timeout:   DefaultTimeout,
-		MaxTokens: maxTokens,
+		Provider:    ProviderDeepSeek,
+		BaseURL:     DefaultDeepSeekBaseURL,
+		Model:       DefaultDeepSeekModel,
+		Timeout:     DefaultTimeout,
+		MaxTokens:   maxTokens,
+		Temperature: 0.1, // 交易系统默认低温，保证决策一致性
 	}
 }
 
@@ -135,6 +137,11 @@ func (client *Client) setAuthHeader(reqHeader http.Header) {
 	reqHeader.Set("Authorization", fmt.Sprintf("Bearer %s", client.APIKey))
 }
 
+// SetTemperature 设置 AI 温度参数（0.0-1.0），控制输出随机性
+func (client *Client) SetTemperature(temperature float64) {
+	client.Temperature = temperature
+}
+
 // callOnce 单次调用AI API（内部使用）
 func (client *Client) callOnce(systemPrompt, userPrompt string) (string, error) {
 	// 打印当前 AI 配置
@@ -168,11 +175,11 @@ func (client *Client) callOnce(systemPrompt, userPrompt string) (string, error) 
 	requestBody := map[string]interface{}{
 		"model":       client.Model,
 		"messages":    messages,
-		"temperature": 0.5, // 降低temperature以提高JSON格式稳定性
+		"temperature": client.Temperature,
 		"max_tokens":  client.MaxTokens,
 	}
 
-	log.Printf("📡 [MCP] 请求参数: max_tokens=%d, temperature=%.1f", client.MaxTokens, 0.5)
+	log.Printf("📡 [MCP] 请求参数: max_tokens=%d, temperature=%.1f", client.MaxTokens, client.Temperature)
 
 	jsonData, err := json.Marshal(requestBody)
 	if err != nil {

@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"log"
 	"math"
+	nofxconfig "nofx/config"
 	"nofx/decision"
 	"nofx/logger"
 	"nofx/market"
 	"nofx/mcp"
 	"nofx/pool"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -166,6 +168,18 @@ func NewAutoTrader(config AutoTraderConfig, database interface{}, userID string)
 			log.Printf("🤖 [%s] 使用DeepSeek AI (自定义URL: %s, 模型: %s)", config.Name, config.CustomAPIURL, config.CustomModelName)
 		} else {
 			log.Printf("🤖 [%s] 使用DeepSeek AI", config.Name)
+		}
+	}
+
+	// 从数据库读取 AI Temperature 配置
+	if database != nil {
+		if db, ok := database.(*nofxconfig.Database); ok && db != nil {
+			if tempStr, err := db.GetSystemConfig("ai_temperature"); err == nil && tempStr != "" {
+				if temp, err := strconv.ParseFloat(tempStr, 64); err == nil && temp >= 0 && temp <= 1 {
+					mcpClient.SetTemperature(temp)
+					log.Printf("🌡️  [%s] AI Temperature: %.2f", config.Name, temp)
+				}
+			}
 		}
 	}
 

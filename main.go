@@ -40,6 +40,7 @@ type ConfigFile struct {
 	DataKLineTime          string                `json:"data_k_line_time"`
 	Log                    *config.LogConfig     `json:"log"`                      // 日志配置
 	TokenExpirationMinutes int                   `json:"token_expiration_minutes"` // Token 过期时间，单位分钟
+	AITemperature          *float64              `json:"ai_temperature"`           // AI 温度参数（0.0-1.0），默认 0.1
 }
 
 // loadConfigFile 读取并解析config.json文件
@@ -109,6 +110,11 @@ func syncConfigToDatabase(database *config.Database, configFile *ConfigFile) err
 
 	if configFile.RegistrationEnabled != nil {
 		configs["registration_enabled"] = fmt.Sprintf("%t", *configFile.RegistrationEnabled)
+	}
+
+	// 同步 AI 温度配置
+	if configFile.AITemperature != nil {
+		configs["ai_temperature"] = fmt.Sprintf("%.2f", *configFile.AITemperature)
 	}
 
 	// 更新数据库配置
