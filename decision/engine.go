@@ -104,6 +104,7 @@ type Context struct {
 	Performance     interface{}                        `json:"-"` // 历史表现分析（logger.PerformanceAnalysis）
 	BTCETHLeverage  int                                `json:"-"` // BTC/ETH杠杆倍数（从配置读取）
 	AltcoinLeverage int                                `json:"-"` // 山寨币杠杆倍数（从配置读取）
+	BTCDailyTrend   string                             `json:"-"` // BTC 日线趋势 "bullish"/"bearish"/"neutral"
 }
 
 // Decision AI的交易决策
@@ -245,6 +246,11 @@ func fetchMarketDataForContext(ctx *Context) error {
 		}
 
 		ctx.MarketDataMap[symbol] = data
+	}
+
+	// 提取 BTC 日线趋势（如果存在）
+	if btcData, ok := ctx.MarketDataMap["BTCUSDT"]; ok && btcData.DailyContext != nil {
+		ctx.BTCDailyTrend = btcData.DailyContext.TrendBias
 	}
 
 	// 加载OI Top数据（不影响主流程）
@@ -429,6 +435,11 @@ func buildUserPrompt(ctx *Context) string {
 	// 系统状态
 	sb.WriteString(fmt.Sprintf("时间: %s | 周期: #%d | 运行: %d分钟\n\n",
 		ctx.CurrentTime, ctx.CallCount, ctx.RuntimeMinutes))
+
+	// BTC 日线趋势摘要
+	if ctx.BTCDailyTrend != "" {
+		sb.WriteString(fmt.Sprintf("## 📈 BTC Daily Trend: %s\n\n", ctx.BTCDailyTrend))
+	}
 
 	// BTC 市场
 	if btcData, hasBTC := ctx.MarketDataMap["BTCUSDT"]; hasBTC {

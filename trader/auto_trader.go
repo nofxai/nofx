@@ -54,7 +54,7 @@ type AutoTraderConfig struct {
 	CustomModelName string
 
 	// 扫描配置
-	ScanInterval time.Duration // 扫描间隔（建议3分钟）
+	ScanInterval time.Duration // 扫描间隔（建议5分钟）
 
 	// 账户配置
 	InitialBalance float64 // 初始金额（用于计算盈亏，需手动设置）
@@ -271,6 +271,32 @@ func NewAutoTrader(config AutoTraderConfig, database interface{}, userID string)
 	}, nil
 }
 
+// waitUntilNextInterval 等待到下一个扫描间隔的整点时间
+// 确保扫描时间与K线周期对齐，获取完整的K线数据
+// 返回 true 表示正常完成等待，false 表示被停止信号中断
+func (at *AutoTrader) waitUntilNextInterval() bool {
+	interval := at.config.ScanInterval
+	now := time.Now()
+
+	// 计算下一个整点时间（例如：扫描间隔5分钟，则等待到 00:00, 00:05, 00:10...）
+	next := now.Truncate(interval).Add(interval)
+
+	// 额外延迟5秒，确保交易所K线数据已更新
+	delay := next.Sub(now) + 5*time.Second
+
+	log.Printf("⏰ 等待到下一个整点时间: %s (延迟 %v)", next.Format("15:04:05"), delay.Round(time.Second))
+
+	// 使用 select 使等待可中断，避免 Stop() 后仍执行交易
+	select {
+	case <-time.After(delay):
+		log.Printf("✅ 已对齐到整点，开始扫描")
+		return true
+	case <-at.stopMonitorCh:
+		log.Printf("⏹ 等待期间收到停止信号，取消启动")
+		return false
+	}
+}
+
 // Run 运行自动交易主循环
 func (at *AutoTrader) Run() error {
 	at.statusMutex.Lock()
@@ -289,10 +315,20 @@ func (at *AutoTrader) Run() error {
 	// 启动回撤监控
 	at.startDrawdownMonitor()
 
+	// 等待到下一个整点时间，确保K线数据完整
+	if !at.waitUntilNextInterval() {
+		return nil // 等待期间被停止
+	}
+
+	// 再次检查是否仍在运行（防止等待完成后刚好被停止）
+	if !at.IsRunning() {
+		return nil
+	}
+
 	ticker := time.NewTicker(at.config.ScanInterval)
 	defer ticker.Stop()
 
-	// 首次立即执行
+	// 首次执行（已对齐到整点）
 	if err := at.runCycle(); err != nil {
 		log.Printf("❌ 执行失败: %v", err)
 	}

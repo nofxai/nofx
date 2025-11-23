@@ -17,6 +17,7 @@ type Data struct {
 	MidTermSeries15m  *MidTermData15m
 	MidTermSeries1h   *MidTermData1h
 	LongerTermContext *LongerTermData
+	DailyContext      *DailyData
 }
 
 // OIData Open Interest数据
@@ -25,7 +26,24 @@ type OIData struct {
 	Average float64
 }
 
-// IntradayData 日内数据(3分钟间隔)
+// DailyData 日线数据(7天)
+type DailyData struct {
+	Dates        []string  // 日期 YYYY-MM-DD
+	OpenPrices   []float64 // 开盘价
+	HighPrices   []float64 // 最高价
+	LowPrices    []float64 // 最低价
+	ClosePrices  []float64 // 收盘价
+	EMA20Values  []float64 // 20日均线
+	EMA50Values  []float64 // 50日均线
+	RSI14Values  []float64 // 14日RSI
+	Volume       []float64 // 成交量
+	ATR14        float64   // 14日ATR
+	Recent7High  float64   // 近7日最高
+	Recent7Low   float64   // 近7日最低
+	TrendBias    string    // "bullish" / "bearish" / "neutral"
+}
+
+// IntradayData 日内数据(5分钟间隔)
 type IntradayData struct {
 	MidPrices   []float64
 	EMA20Values []float64

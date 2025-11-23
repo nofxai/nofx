@@ -10,7 +10,7 @@ import (
 // TDD Red: This test should FAIL initially, demonstrating the bug
 func TestWSMonitor_GetCurrentKlines_StaleDataDetection(t *testing.T) {
 	monitor := &WSMonitor{
-		klineDataMap3m: sync.Map{},
+		klineDataMap5m: sync.Map{},
 		klineDataMap4h: sync.Map{},
 	}
 
@@ -43,10 +43,10 @@ func TestWSMonitor_GetCurrentKlines_StaleDataDetection(t *testing.T) {
 	}
 
 	// Store stale data in cache (simulating old WebSocket data that hasn't been updated)
-	monitor.klineDataMap3m.Store(symbol, staleEntry)
+	monitor.klineDataMap5m.Store(symbol, staleEntry)
 
 	// Try to get current klines
-	klines, err := monitor.GetCurrentKlines(symbol, "3m")
+	klines, err := monitor.GetCurrentKlines(symbol, "5m")
 
 	// TDD EXPECTATION: Should detect that ReceivedAt is 6 hours ago and return an error
 	if err == nil {
@@ -69,7 +69,7 @@ func TestWSMonitor_GetCurrentKlines_StaleDataDetection(t *testing.T) {
 // This test should PASS even before the fix (verifies we don't break existing behavior)
 func TestWSMonitor_GetCurrentKlines_FreshDataPasses(t *testing.T) {
 	monitor := &WSMonitor{
-		klineDataMap3m: sync.Map{},
+		klineDataMap5m: sync.Map{},
 		klineDataMap4h: sync.Map{},
 	}
 
@@ -102,10 +102,10 @@ func TestWSMonitor_GetCurrentKlines_FreshDataPasses(t *testing.T) {
 	}
 
 	// Store fresh data in cache
-	monitor.klineDataMap3m.Store(symbol, freshEntry)
+	monitor.klineDataMap5m.Store(symbol, freshEntry)
 
 	// Try to get current klines
-	klines, err := monitor.GetCurrentKlines(symbol, "3m")
+	klines, err := monitor.GetCurrentKlines(symbol, "5m")
 
 	// Fresh data should be returned without error
 	if err != nil {
@@ -127,7 +127,7 @@ func TestWSMonitor_GetCurrentKlines_FreshDataPasses(t *testing.T) {
 // TestWSMonitor_GetCurrentKlines_BoundaryCase tests the 15-minute boundary
 func TestWSMonitor_GetCurrentKlines_BoundaryCase(t *testing.T) {
 	monitor := &WSMonitor{
-		klineDataMap3m: sync.Map{},
+		klineDataMap5m: sync.Map{},
 		klineDataMap4h: sync.Map{},
 	}
 
@@ -150,9 +150,9 @@ func TestWSMonitor_GetCurrentKlines_BoundaryCase(t *testing.T) {
 		ReceivedAt: fifteenMinOneSecAgo,
 	}
 
-	monitor.klineDataMap3m.Store(symbol, boundaryKlines)
+	monitor.klineDataMap5m.Store(symbol, boundaryKlines)
 
-	klines, err := monitor.GetCurrentKlines(symbol, "3m")
+	klines, err := monitor.GetCurrentKlines(symbol, "5m")
 
 	// Should reject data older than 15 minutes
 	if err == nil {
@@ -167,7 +167,7 @@ func TestWSMonitor_GetCurrentKlines_NoDataFallsBackToAPI(t *testing.T) {
 	t.Skip("Skipping API test - requires network connection")
 
 	monitor := &WSMonitor{
-		klineDataMap3m: sync.Map{},
+		klineDataMap5m: sync.Map{},
 		klineDataMap4h: sync.Map{},
 	}
 
@@ -176,7 +176,7 @@ func TestWSMonitor_GetCurrentKlines_NoDataFallsBackToAPI(t *testing.T) {
 	// Don't store any data in cache
 
 	// Should fall back to API
-	klines, err := monitor.GetCurrentKlines(symbol, "3m")
+	klines, err := monitor.GetCurrentKlines(symbol, "5m")
 
 	if err != nil {
 		t.Fatalf("API fallback should work, got error: %v", err)
@@ -207,34 +207,34 @@ func TestDataAgeCalculation(t *testing.T) {
 	now := time.Now()
 
 	testCases := []struct {
-		name           string
-		dataTime       time.Time
-		maxAge         time.Duration
-		shouldBeStale  bool
+		name          string
+		dataTime      time.Time
+		maxAge        time.Duration
+		shouldBeStale bool
 	}{
 		{
-			name:           "Fresh data - 1 minute old",
-			dataTime:       now.Add(-1 * time.Minute),
-			maxAge:         5 * time.Minute,
-			shouldBeStale:  false,
+			name:          "Fresh data - 1 minute old",
+			dataTime:      now.Add(-1 * time.Minute),
+			maxAge:        5 * time.Minute,
+			shouldBeStale: false,
 		},
 		{
-			name:           "Boundary - exactly 5 minutes old",
-			dataTime:       now.Add(-5 * time.Minute),
-			maxAge:         5 * time.Minute,
-			shouldBeStale:  false,
+			name:          "Boundary - exactly 5 minutes old",
+			dataTime:      now.Add(-5 * time.Minute),
+			maxAge:        5 * time.Minute,
+			shouldBeStale: false,
 		},
 		{
-			name:           "Stale - 5 minutes 1 second old",
-			dataTime:       now.Add(-5*time.Minute - 1*time.Second),
-			maxAge:         5 * time.Minute,
-			shouldBeStale:  true,
+			name:          "Stale - 5 minutes 1 second old",
+			dataTime:      now.Add(-5*time.Minute - 1*time.Second),
+			maxAge:        5 * time.Minute,
+			shouldBeStale: true,
 		},
 		{
-			name:           "Very stale - 6 hours old",
-			dataTime:       now.Add(-6 * time.Hour),
-			maxAge:         5 * time.Minute,
-			shouldBeStale:  true,
+			name:          "Very stale - 6 hours old",
+			dataTime:      now.Add(-6 * time.Hour),
+			maxAge:        5 * time.Minute,
+			shouldBeStale: true,
 		},
 	}
 

@@ -63,7 +63,7 @@ export function TraderConfigModal({
     is_cross_margin: true,
     use_coin_pool: false,
     use_oi_top: false,
-    scan_interval_minutes: 3,
+    scan_interval_minutes: 5,
   })
   const [isSaving, setIsSaving] = useState(false)
   const [availableCoins, setAvailableCoins] = useState<string[]>([])
@@ -99,7 +99,7 @@ export function TraderConfigModal({
         use_coin_pool: false,
         use_oi_top: false,
         initial_balance: 1000,
-        scan_interval_minutes: 3,
+        scan_interval_minutes: 5,
       })
     }
     // 确保旧数据也有默认的 system_prompt_template
@@ -482,32 +482,20 @@ export function TraderConfigModal({
                   <label className="text-sm text-[#EAECEF] block mb-2">
                     {t('aiScanInterval', language)}
                   </label>
-                  <input
-                    type="number"
+                  <select
                     value={formData.scan_interval_minutes}
-                    onChange={(e) => {
-                      const parsedValue = Number(e.target.value)
-                      const safeValue = Number.isFinite(parsedValue)
-                        ? Math.max(1, parsedValue)
-                        : 3
-                      handleInputChange('scan_interval_minutes', safeValue)
-                    }}
+                    onChange={(e) => handleInputChange('scan_interval_minutes', Number(e.target.value))}
                     className="w-full px-3 py-2 bg-[#0B0E11] border border-[#2B3139] rounded text-[#EAECEF] focus:border-[#F0B90B] focus:outline-none"
-                    min="1"
-                    max="60"
-                    step="1"
-                  />
+                  >
+                    <option value={5}>5 {t('minutes', language)}</option>
+                    <option value={10}>10 {t('minutes', language)}</option>
+                    <option value={15}>15 {t('minutes', language)}</option>
+                    <option value={30}>30 {t('minutes', language)}</option>
+                    <option value={60}>60 {t('minutes', language)}</option>
+                  </select>
                   <p className="text-xs text-gray-500 mt-1">
                     {t('scanIntervalRecommend', language)}
                   </p>
-                  {formData.scan_interval_minutes < 3 && (
-                    <div className="flex items-start gap-2 mt-2 p-2 bg-yellow-900/20 border border-yellow-700/50 rounded">
-                      <span className="text-yellow-500 text-sm flex-shrink-0">⚠️</span>
-                      <p className="text-xs text-yellow-500">
-                        {t('scanIntervalCostWarning', language)}
-                      </p>
-                    </div>
-                  )}
                 </div>
                 <div></div>
               </div>

@@ -19,13 +19,13 @@ func generateTestKlines(count int) []Kline {
 		volume := 1000.0 + float64(i*100)
 
 		klines[i] = Kline{
-			OpenTime:  int64(i * 180000), // 3分钟间隔
+			OpenTime:  int64(i * 300000), // 5分钟间隔
 			Open:      open,
 			High:      high,
 			Low:       low,
 			Close:     close,
 			Volume:    volume,
-			CloseTime: int64((i+1)*180000 - 1),
+			CloseTime: int64((i+1)*300000 - 1),
 		}
 	}
 	return klines
@@ -399,49 +399,41 @@ func TestIsStaleData_PriceFreezeWithVolume(t *testing.T) {
 	}
 }
 
-// TestIsStaleData_InsufficientData tests that insufficient data (<5 klines) returns false
+// TestIsStaleData_InsufficientData tests that insufficient data (<2 klines) returns false
 func TestIsStaleData_InsufficientData(t *testing.T) {
 	klines := []Kline{
-		{Close: 100.0, Volume: 0},
-		{Close: 100.0, Volume: 0},
 		{Close: 100.0, Volume: 0},
 	}
 
 	result := isStaleData(klines, "BTCUSDT")
 
 	if result {
-		t.Error("Expected false for insufficient data (<5 klines), got true")
+		t.Error("Expected false for insufficient data (<2 klines), got true")
 	}
 }
 
-// TestIsStaleData_ExactlyFiveKlines tests edge case with exactly 5 klines
-func TestIsStaleData_ExactlyFiveKlines(t *testing.T) {
-	// Stale case: exactly 5 frozen klines with zero volume
+// TestIsStaleData_ExactlyTwoKlines tests edge case with exactly 2 klines (threshold)
+func TestIsStaleData_ExactlyTwoKlines(t *testing.T) {
+	// Stale case: exactly 2 frozen klines with zero volume
 	staleKlines := []Kline{
-		{Close: 100.0, Volume: 0},
-		{Close: 100.0, Volume: 0},
-		{Close: 100.0, Volume: 0},
 		{Close: 100.0, Volume: 0},
 		{Close: 100.0, Volume: 0},
 	}
 
 	result := isStaleData(staleKlines, "TESTUSDT")
 	if !result {
-		t.Error("Expected true for exactly 5 frozen klines with zero volume, got false")
+		t.Error("Expected true for exactly 2 frozen klines with zero volume, got false")
 	}
 
-	// Normal case: exactly 5 klines with fluctuation
+	// Normal case: exactly 2 klines with fluctuation
 	normalKlines := []Kline{
 		{Close: 100.0, Volume: 1000},
 		{Close: 100.1, Volume: 1100},
-		{Close: 99.9, Volume: 900},
-		{Close: 100.0, Volume: 1000},
-		{Close: 100.05, Volume: 950},
 	}
 
 	result = isStaleData(normalKlines, "TESTUSDT")
 	if result {
-		t.Error("Expected false for exactly 5 normal klines, got true")
+		t.Error("Expected false for exactly 2 normal klines, got true")
 	}
 }
 

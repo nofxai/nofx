@@ -21,7 +21,7 @@ const (
 
 	// InitialScanCycles 首次初始化时扫描的决策周期数量
 	// 目标：获取足够的交易填充缓存（至少 AIAnalysisSampleSize 笔）
-	// 假设每 3 分钟一个周期，10000 个周期 ≈ 500 小时历史数据
+	// 假设每 5 分钟一个周期，10000 个周期 ≈ 833 小时历史数据
 	InitialScanCycles = 10000
 )
 

@@ -343,9 +343,11 @@ export const translations = {
     create: 'Create',
     configureAIModels: 'Configure AI Models',
     configureExchanges: 'Configure Exchanges',
-    aiScanInterval: 'AI Scan Decision Interval (minutes)',
-    scanIntervalRecommend: 'Recommended: 1+ minutes (3-10 optimal)',
-    scanIntervalCostWarning: 'Shorter scan intervals significantly increase AI API call frequency and costs (approximately 3x compared to 3-minute intervals). Recommended for testing or high-frequency strategies only.',
+    aiScanInterval: 'AI Scan Interval',
+    minutes: 'min',
+    scanIntervalRecommend: 'Aligned with 5-minute K-line cycle',
+    scanIntervalCostWarning: 'Minimum 5 minutes to align with K-line data cycle.',
+    scanIntervalLongWarning: 'Longer intervals may miss trading opportunities but reduce API costs.',
     useTestnet: 'Use Testnet',
     enabled: 'Enabled',
     save: 'Save',
@@ -888,7 +890,7 @@ export const translations = {
 
     faqHighFees: 'Trading fees are too high',
     faqHighFeesAnswer:
-      'NOFX default 3-minute scan interval can cause frequent trading. Solutions: Increase decision interval to 5-10 minutes; Optimize system prompt to reduce overtrading; Adjust leverage to reduce position sizes.',
+      'Frequent trading can increase fees. Solutions: Increase decision interval to 10+ minutes; Optimize system prompt to reduce overtrading; Adjust leverage to reduce position sizes.',
 
     faqNoTakeProfit: "AI doesn't close profitable positions",
     faqNoTakeProfitAnswer:
@@ -1363,9 +1365,11 @@ export const translations = {
     create: '创建',
     configureAIModels: '配置AI模型',
     configureExchanges: '配置交易所',
-    aiScanInterval: 'AI 扫描决策间隔 (分钟)',
-    scanIntervalRecommend: '建议: 1分钟起 (3-10最佳)',
-    scanIntervalCostWarning: '更短的扫描间隔会显著增加 AI API 调用频率和成本（约为 3 分钟间隔的 3 倍）。建议仅在测试或高频策略时使用。',
+    aiScanInterval: 'AI 扫描间隔',
+    minutes: '分钟',
+    scanIntervalRecommend: '与 5 分钟 K 线周期对齐',
+    scanIntervalCostWarning: '最小 5 分钟，与 K 线数据周期对齐。',
+    scanIntervalLongWarning: '较长间隔可能错过交易机会，但可降低 API 成本。',
     useTestnet: '使用测试网',
     enabled: '启用',
     save: '保存',

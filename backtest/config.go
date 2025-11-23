@@ -77,7 +77,7 @@ func (cfg *BacktestConfig) Validate() error {
 	}
 
 	if len(cfg.Timeframes) == 0 {
-		cfg.Timeframes = []string{"3m", "15m", "4h"}
+		cfg.Timeframes = []string{"5m", "15m", "1h", "4h", "1d"}
 	}
 	normTF := make([]string, 0, len(cfg.Timeframes))
 	for _, tf := range cfg.Timeframes {

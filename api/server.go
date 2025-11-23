@@ -553,7 +553,7 @@ func (s *Server) handleCreateTrader(c *gin.Context) {
 	// 设置扫描间隔默认值
 	scanIntervalMinutes := req.ScanIntervalMinutes
 	if scanIntervalMinutes <= 0 {
-		scanIntervalMinutes = 3 // 默认3分钟
+		scanIntervalMinutes = 5 // 默认5分钟
 	}
 
 	// ✨ 查询交易所实际余额，覆盖用户输入
@@ -1354,6 +1354,7 @@ func (s *Server) handleTraderList(c *gin.Context) {
 			"exchange_id":            trader.ExchangeID,
 			"is_running":             isRunning,
 			"initial_balance":        trader.InitialBalance,
+			"scan_interval_minutes":  trader.ScanIntervalMinutes,
 			"system_prompt_template": trader.SystemPromptTemplate,
 			"system_prompt":          systemPrompt,
 		})
@@ -1620,7 +1621,7 @@ func (s *Server) handleEquityHistory(c *gin.Context) {
 	}
 
 	// 获取尽可能多的历史数据（几天的数据）
-	// 每3分钟一个周期：10000条 = 约20天的数据
+	// 每5分钟一个周期：10000条 = 约35天的数据
 	records, err := trader.GetDecisionLogger().GetLatestRecords(10000)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
