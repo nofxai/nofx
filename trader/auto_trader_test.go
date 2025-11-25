@@ -1740,3 +1740,88 @@ func (s *AutoTraderTestSuite) TestUpdateTakeProfitSkipDuplicate() {
 // 注意：远程版本使用 waitUntilNextInterval() 方法（返回 bool），实现方式不同
 // 此测试已禁用，因为被测方法 timeUntilNextAlignedInterval 在远程版本中不存在
 // func (s *AutoTraderTestSuite) TestTimeUntilNextAlignedInterval() { ... }
+
+// TestNewAutoTraderAIProviderInitialization 测试 NewAutoTrader 正确初始化各种 AI provider
+// 这个测试验证 anthropic 等 provider 的 API key 能被正确传递到 mcpClient
+func TestNewAutoTraderAIProviderInitialization(t *testing.T) {
+	tests := []struct {
+		name           string
+		aiModel        string
+		customAPIKey   string
+		deepSeekKey    string
+		qwenKey        string
+		expectAPIKey   string // 期望 mcpClient 收到的 API key
+		expectProvider string // 期望的 provider
+	}{
+		{
+			name:           "anthropic_使用CustomAPIKey",
+			aiModel:        "anthropic",
+			customAPIKey:   "sk-ant-test-key-12345678",
+			expectAPIKey:   "sk-ant-test-key-12345678",
+			expectProvider: "anthropic",
+		},
+		{
+			name:           "openai_使用CustomAPIKey",
+			aiModel:        "openai",
+			customAPIKey:   "sk-openai-test-key-123456",
+			expectAPIKey:   "sk-openai-test-key-123456",
+			expectProvider: "openai",
+		},
+		{
+			name:           "gemini_使用CustomAPIKey",
+			aiModel:        "gemini",
+			customAPIKey:   "gemini-test-key-12345678",
+			expectAPIKey:   "gemini-test-key-12345678",
+			expectProvider: "gemini",
+		},
+		{
+			name:           "deepseek_使用DeepSeekKey",
+			aiModel:        "deepseek",
+			deepSeekKey:    "deepseek-test-key-123456",
+			expectAPIKey:   "deepseek-test-key-123456",
+			expectProvider: "deepseek",
+		},
+		{
+			name:           "qwen_使用QwenKey",
+			aiModel:        "qwen",
+			qwenKey:        "qwen-test-key-1234567890",
+			expectAPIKey:   "qwen-test-key-1234567890",
+			expectProvider: "qwen",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			config := AutoTraderConfig{
+				ID:              "test-trader",
+				Name:            "Test Trader",
+				AIModel:         tt.aiModel,
+				Exchange:        "binance", // 使用 binance，会因缺少 API 密钥而失败，但 mcpClient 已初始化
+				CustomAPIKey:    tt.customAPIKey,
+				DeepSeekKey:     tt.deepSeekKey,
+				QwenKey:         tt.qwenKey,
+				ScanInterval:    3 * time.Minute,
+				BTCETHLeverage:  10,
+				AltcoinLeverage: 5,
+			}
+
+			// 调用 initMCPClient 来单独测试 AI 初始化逻辑
+			mcpClient := initMCPClient(config)
+
+			// 验证 mcpClient 已初始化
+			if mcpClient == nil {
+				t.Fatal("mcpClient 不应为 nil")
+			}
+
+			// 通过调用 CallWithMessages 来验证 API key 是否设置
+			// 如果 API key 为空，会返回错误 "AI API密钥未设置"
+			_, err := mcpClient.CallWithMessages("test", "test")
+			if tt.expectAPIKey != "" {
+				// 有 API key 时，应该不是 "未设置" 错误（可能是网络错误或其他，但不是未设置）
+				if err != nil && err.Error() == "AI API密钥未设置，请先调用 SetAPIKey" {
+					t.Errorf("API key 未正确设置，期望 provider=%s 使用 key=%s", tt.expectProvider, tt.expectAPIKey)
+				}
+			}
+		})
+	}
+}

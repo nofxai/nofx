@@ -23,16 +23,18 @@ var (
 	// DefaultProviderURLs 各 provider 的默认 API URL
 	// 新增 provider 时只需在此 map 中添加即可
 	DefaultProviderURLs = map[string]string{
-		"openai": "https://api.openai.com/v1",
-		"gemini": "https://generativelanguage.googleapis.com/v1beta/openai",
-		"grok":   "https://api.x.ai/v1",
+		"openai":    "https://api.openai.com/v1",
+		"anthropic": "https://api.anthropic.com/v1",
+		"gemini":    "https://generativelanguage.googleapis.com/v1beta/openai",
+		"grok":      "https://api.x.ai/v1",
 	}
 
 	// DefaultProviderModels 各 provider 的默认模型名称
 	DefaultProviderModels = map[string]string{
-		"openai": "gpt-5.1",
-		"gemini": "gemini-2.5-pro",
-		"grok":   "grok-4",
+		"openai":    "gpt-5.1",
+		"anthropic": "claude-sonnet-4-20250514",
+		"gemini":    "gemini-2.5-pro",
+		"grok":      "grok-4",
 	}
 )
 
