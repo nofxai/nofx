@@ -169,6 +169,10 @@ export function TraderConfigViewModal({
                 value={traderData.is_cross_margin ? '全仓' : '逐仓'}
               />
               <InfoRow
+                label="AI 扫描间隔"
+                value={`${traderData.scan_interval_minutes || 5} 分钟`}
+              />
+              <InfoRow
                 label="BTC/ETH 杠杆"
                 value={`${traderData.btc_eth_leverage}x`}
               />
