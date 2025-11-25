@@ -50,9 +50,9 @@ func TestBuildSystemPrompt_ActionListCompleteness(t *testing.T) {
 	}
 }
 
-// TestBuildSystemPrompt_PositionLimitEmphasis 测试仓位限制是否被充分强调
+// TestBuildSystemPromptPositionLimitEmphasis 测试仓位限制是否被充分强调
 // 目的：确保 AI 能够清楚地看到并遵守仓位限制规则
-func TestBuildSystemPrompt_PositionLimitEmphasis(t *testing.T) {
+func TestBuildSystemPromptPositionLimitEmphasis(t *testing.T) {
 	accountEquity := 100.0
 	btcEthLeverage := 50
 	altcoinLeverage := 20
