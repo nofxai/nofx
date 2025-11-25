@@ -97,7 +97,33 @@ These fixes have been submitted to the official repository, some are still pendi
 - Go 1.21+
 - Node.js 18+ (用于编译前端)
 
-### 编译步骤 (Build Steps)
+### 一键编译 (One-Click Build)
+
+```bash
+# 克隆仓库
+git clone https://github.com/nofxai/nofx.git
+cd nofx
+
+# 一键编译（前端 + 测试 + 后端）
+./build.sh
+
+# 准备配置并运行
+cp config.json.example config.json
+# 编辑 config.json，设置 jwt_secret（必须！）
+./nofx
+```
+
+**build.sh 选项：**
+
+```bash
+./build.sh                    # 完整编译（前端 + 测试 + 后端）
+./build.sh --skip-frontend    # 跳过前端编译（使用已有 web/dist）
+./build.sh --skip-test        # 跳过测试
+./build.sh --output nofx-arm  # 指定输出文件名
+./build.sh --help             # 查看帮助
+```
+
+### 手动编译步骤 (Manual Build Steps)
 
 ```bash
 # 1. 克隆仓库
