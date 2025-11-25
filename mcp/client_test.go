@@ -305,124 +305,70 @@ func TestAIClient_SetTemperature(t *testing.T) {
 	}
 }
 
+// anthropicMockResponse 返回标准的 Anthropic API 响应
+func anthropicMockResponse(text string) map[string]interface{} {
+	return map[string]interface{}{
+		"content":     []interface{}{map[string]interface{}{"type": "text", "text": text}},
+		"stop_reason": "end_turn",
+		"usage":       map[string]interface{}{"input_tokens": 10, "output_tokens": 5},
+	}
+}
+
+// setupAnthropicClient 创建配置好的 Anthropic 测试客户端
+func setupAnthropicClient(serverURL string) *Client {
+	client := New().(*Client)
+	client.SetAPIKey("sk-ant-test-key", serverURL, "claude-3-opus", "anthropic")
+	client.Timeout = 1 * time.Second
+	return client
+}
+
 // TestAnthropicAPICall 测试 Anthropic Claude API 的原生调用
-// Anthropic 与 OpenAI 的差异：
-// 1. 认证头: x-api-key 而不是 Authorization: Bearer
-// 2. 端点: /messages 而不是 /chat/completions
-// 3. System prompt: 独立的 system 字段而不是在 messages 数组中
-// 4. 响应格式: content[0].text 而不是 choices[0].message.content
 func TestAnthropicAPICall(t *testing.T) {
-	t.Run("Anthropic_使用x-api-key认证头", func(t *testing.T) {
-		var receivedAuthHeader string
+	t.Run("认证头和端点", func(t *testing.T) {
+		var authHeader, path string
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			receivedAuthHeader = r.Header.Get("x-api-key")
-			// 返回 Anthropic 格式的响应
-			json.NewEncoder(w).Encode(map[string]interface{}{
-				"content": []interface{}{
-					map[string]interface{}{
-						"type": "text",
-						"text": "Hello from Claude",
-					},
-				},
-				"stop_reason": "end_turn",
-				"usage": map[string]interface{}{
-					"input_tokens":  10,
-					"output_tokens": 5,
-				},
-			})
+			authHeader = r.Header.Get("x-api-key")
+			path = r.URL.Path
+			json.NewEncoder(w).Encode(anthropicMockResponse("ok"))
 		}))
 		defer server.Close()
 
-		client := New().(*Client)
-		client.SetAPIKey("sk-ant-test-key", server.URL, "claude-3-opus", "anthropic")
-		client.Timeout = 1 * time.Second
-
-		_, _ = client.CallWithMessages("You are helpful", "Hello")
-
-		assert.Equal(t, "sk-ant-test-key", receivedAuthHeader, "Anthropic 应该使用 x-api-key 认证头")
-	})
-
-	t.Run("Anthropic_使用messages端点", func(t *testing.T) {
-		var receivedPath string
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			receivedPath = r.URL.Path
-			json.NewEncoder(w).Encode(map[string]interface{}{
-				"content": []interface{}{
-					map[string]interface{}{"type": "text", "text": "ok"},
-				},
-				"stop_reason": "end_turn",
-				"usage":       map[string]interface{}{"input_tokens": 10, "output_tokens": 5},
-			})
-		}))
-		defer server.Close()
-
-		client := New().(*Client)
-		client.SetAPIKey("sk-ant-test-key", server.URL, "claude-3-opus", "anthropic")
-		client.Timeout = 1 * time.Second
-
+		client := setupAnthropicClient(server.URL)
 		_, _ = client.CallWithMessages("system", "user")
 
-		assert.Equal(t, "/messages", receivedPath, "Anthropic 应该使用 /messages 端点")
+		assert.Equal(t, "sk-ant-test-key", authHeader, "应使用 x-api-key 认证头")
+		assert.Equal(t, "/messages", path, "应使用 /messages 端点")
 	})
 
-	t.Run("Anthropic_system_prompt独立字段", func(t *testing.T) {
+	t.Run("请求格式_system独立字段", func(t *testing.T) {
 		var reqBody map[string]interface{}
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			json.NewDecoder(r.Body).Decode(&reqBody)
-			json.NewEncoder(w).Encode(map[string]interface{}{
-				"content": []interface{}{
-					map[string]interface{}{"type": "text", "text": "ok"},
-				},
-				"stop_reason": "end_turn",
-				"usage":       map[string]interface{}{"input_tokens": 10, "output_tokens": 5},
-			})
+			json.NewEncoder(w).Encode(anthropicMockResponse("ok"))
 		}))
 		defer server.Close()
 
-		client := New().(*Client)
-		client.SetAPIKey("sk-ant-test-key", server.URL, "claude-3-opus", "anthropic")
-		client.Timeout = 1 * time.Second
+		client := setupAnthropicClient(server.URL)
+		_, _ = client.CallWithMessages("You are helpful", "Hello")
 
-		_, _ = client.CallWithMessages("You are a helpful assistant", "Hello")
-
-		// 验证 system 是独立字段
-		systemField, hasSystem := reqBody["system"]
-		assert.True(t, hasSystem, "Anthropic 请求应该有独立的 system 字段")
-		assert.Equal(t, "You are a helpful assistant", systemField, "system 字段应该包含 system prompt")
-
-		// 验证 messages 数组只包含 user 消息
+		// system 应为独立字段
+		assert.Equal(t, "You are helpful", reqBody["system"])
+		// messages 只含 user
 		messages := reqBody["messages"].([]interface{})
-		assert.Equal(t, 1, len(messages), "messages 数组应该只包含 user 消息")
-		firstMsg := messages[0].(map[string]interface{})
-		assert.Equal(t, "user", firstMsg["role"], "第一条消息应该是 user")
+		assert.Equal(t, 1, len(messages))
+		assert.Equal(t, "user", messages[0].(map[string]interface{})["role"])
 	})
 
-	t.Run("Anthropic_解析content响应格式", func(t *testing.T) {
+	t.Run("响应解析_content数组", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// 返回 Anthropic 格式的响应
-			json.NewEncoder(w).Encode(map[string]interface{}{
-				"content": []interface{}{
-					map[string]interface{}{
-						"type": "text",
-						"text": "This is Claude's response",
-					},
-				},
-				"stop_reason": "end_turn",
-				"usage": map[string]interface{}{
-					"input_tokens":  10,
-					"output_tokens": 5,
-				},
-			})
+			json.NewEncoder(w).Encode(anthropicMockResponse("Claude's response"))
 		}))
 		defer server.Close()
 
-		client := New().(*Client)
-		client.SetAPIKey("sk-ant-test-key", server.URL, "claude-3-opus", "anthropic")
-		client.Timeout = 1 * time.Second
-
+		client := setupAnthropicClient(server.URL)
 		result, err := client.CallWithMessages("system", "user")
 
-		assert.NoError(t, err, "应该成功解析 Anthropic 响应")
-		assert.Equal(t, "This is Claude's response", result, "应该正确解析 content[0].text")
+		assert.NoError(t, err)
+		assert.Equal(t, "Claude's response", result)
 	})
 }
