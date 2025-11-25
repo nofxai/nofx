@@ -440,10 +440,29 @@ func buildUserPrompt(ctx *Context) string {
 	}
 
 	// BTC 市场
-	if btcData, hasBTC := ctx.MarketDataMap["BTCUSDT"]; hasBTC {
-		sb.WriteString(fmt.Sprintf("BTC: %.2f (1h: %+.2f%%, 4h: %+.2f%%) | MACD: %.4f | RSI: %.2f\n\n",
-			btcData.CurrentPrice, btcData.PriceChange1h, btcData.PriceChange4h,
-			btcData.CurrentMACD, btcData.CurrentRSI7))
+	// 只有当 BTC 在持仓或候选列表中时才显示（避免未选中 BTC 时给 AI 传递干扰信息）
+	isBTCRelevant := false
+	for _, pos := range ctx.Positions {
+		if pos.Symbol == "BTCUSDT" {
+			isBTCRelevant = true
+			break
+		}
+	}
+	if !isBTCRelevant {
+		for _, coin := range ctx.CandidateCoins {
+			if coin.Symbol == "BTCUSDT" {
+				isBTCRelevant = true
+				break
+			}
+		}
+	}
+
+	if isBTCRelevant {
+		if btcData, hasBTC := ctx.MarketDataMap["BTCUSDT"]; hasBTC {
+			sb.WriteString(fmt.Sprintf("BTC: %.2f (1h: %+.2f%%, 4h: %+.2f%%) | MACD: %.4f | RSI: %.2f\n\n",
+				btcData.CurrentPrice, btcData.PriceChange1h, btcData.PriceChange4h,
+				btcData.CurrentMACD, btcData.CurrentRSI7))
+		}
 	}
 
 	// 账户
