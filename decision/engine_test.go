@@ -24,6 +24,7 @@ func TestBuildPromptSnapshot(t *testing.T) {
 			"",      // customPrompt
 			false,   // overrideBase
 			"default",
+			"hyperliquid", // exchange
 		)
 
 		// 验证包含关键部分
@@ -56,6 +57,7 @@ func TestBuildPromptSnapshot(t *testing.T) {
 			customContent,
 			false, // 不覆盖
 			"default",
+			"hyperliquid",
 		)
 
 		// 应该同时包含基础部分和自定义部分
@@ -82,6 +84,7 @@ func TestBuildPromptSnapshot(t *testing.T) {
 			customContent,
 			true, // 覆盖基础 prompt
 			"default",
+			"hyperliquid",
 		)
 
 		// 应该只包含自定义内容
@@ -103,6 +106,7 @@ func TestBuildPromptSnapshot(t *testing.T) {
 			"", // 空自定义
 			false,
 			"default",
+			"hyperliquid",
 		)
 
 		// 应该包含基础内容
@@ -124,6 +128,7 @@ func TestBuildPromptSnapshot(t *testing.T) {
 			"",
 			false,
 			"default",
+			"hyperliquid",
 		)
 
 		// 验证杠杆配置
@@ -159,6 +164,7 @@ func TestBuildPromptSnapshot(t *testing.T) {
 			"",
 			false,
 			"default",
+			"hyperliquid",
 		)
 
 		// 验证包含输出格式相关内容
@@ -186,6 +192,7 @@ func TestBuildPromptSnapshotConsistency(t *testing.T) {
 		custom         string
 		override       bool
 		template       string
+		exchange       string
 	}{
 		equity:         15000.0,
 		btcEthLeverage: 8,
@@ -193,6 +200,7 @@ func TestBuildPromptSnapshotConsistency(t *testing.T) {
 		custom:         "我的策略",
 		override:       false,
 		template:       "default",
+		exchange:       "hyperliquid",
 	}
 
 	// 生成两次快照
@@ -203,6 +211,7 @@ func TestBuildPromptSnapshotConsistency(t *testing.T) {
 		params.custom,
 		params.override,
 		params.template,
+		params.exchange,
 	)
 
 	snapshot2 := BuildPromptSnapshot(
@@ -212,6 +221,7 @@ func TestBuildPromptSnapshotConsistency(t *testing.T) {
 		params.custom,
 		params.override,
 		params.template,
+		params.exchange,
 	)
 
 	// 应该完全一致

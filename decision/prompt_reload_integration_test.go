@@ -42,7 +42,7 @@ func TestPromptReloadEndToEnd(t *testing.T) {
 	}
 
 	// 步骤4: 使用 buildSystemPrompt 验证模板被正确使用
-	systemPrompt := buildSystemPrompt(10000.0, 10, 5, "test_strategy")
+	systemPrompt := buildSystemPrompt(10000.0, 10, 5, "test_strategy", 12.0)
 	if !strings.Contains(systemPrompt, initialContent) {
 		t.Errorf("buildSystemPrompt 未包含模板内容\n生成的 prompt:\n%s", systemPrompt)
 	}
@@ -69,7 +69,7 @@ func TestPromptReloadEndToEnd(t *testing.T) {
 	}
 
 	// 步骤8: 验证 buildSystemPrompt 使用了新内容
-	newSystemPrompt := buildSystemPrompt(10000.0, 10, 5, "test_strategy")
+	newSystemPrompt := buildSystemPrompt(10000.0, 10, 5, "test_strategy", 12.0)
 	if !strings.Contains(newSystemPrompt, updatedContent) {
 		t.Errorf("buildSystemPrompt 未包含更新后的模板内容\n生成的 prompt:\n%s", newSystemPrompt)
 	}
@@ -108,7 +108,7 @@ func TestPromptReloadWithCustomPrompt(t *testing.T) {
 
 	// 测试1: 基础模板 + 自定义 prompt（不覆盖）
 	customPrompt := "个性化规则：只交易 BTC"
-	result := buildSystemPromptWithCustom(10000.0, 10, 5, customPrompt, false, "base")
+	result := buildSystemPromptWithCustom(10000.0, 10, 5, customPrompt, false, "base", 12.0)
 	if !strings.Contains(result, baseContent) {
 		t.Errorf("未包含基础模板内容")
 	}
@@ -117,7 +117,7 @@ func TestPromptReloadWithCustomPrompt(t *testing.T) {
 	}
 
 	// 测试2: 覆盖基础 prompt
-	result = buildSystemPromptWithCustom(10000.0, 10, 5, customPrompt, true, "base")
+	result = buildSystemPromptWithCustom(10000.0, 10, 5, customPrompt, true, "base", 12.0)
 	if strings.Contains(result, baseContent) {
 		t.Errorf("覆盖模式下仍包含基础模板内容")
 	}
@@ -135,7 +135,7 @@ func TestPromptReloadWithCustomPrompt(t *testing.T) {
 		t.Fatalf("重新加载失败: %v", err)
 	}
 
-	result = buildSystemPromptWithCustom(10000.0, 10, 5, customPrompt, false, "base")
+	result = buildSystemPromptWithCustom(10000.0, 10, 5, customPrompt, false, "base", 12.0)
 	if !strings.Contains(result, updatedBase) {
 		t.Errorf("重新加载后未包含更新的基础模板内容")
 	}
@@ -187,7 +187,7 @@ func TestPromptReloadFallback(t *testing.T) {
 	}()
 
 	// 这将触发 fatal
-	buildSystemPrompt(10000.0, 10, 5, "nonexistent")
+	buildSystemPrompt(10000.0, 10, 5, "nonexistent", 12.0)
 }
 
 // TestConcurrentPromptReload 测试并发场景下的 prompt 重新加载

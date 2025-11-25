@@ -89,6 +89,7 @@ func NewRunner(cfg BacktestConfig, mcpClient mcp.AIClient) (*Runner, error) {
 	account := NewBacktestAccount(cfg.InitialBalance, cfg.FeeBps, cfg.SlippageBps)
 
 	// 生成 prompt 内容快照（启动时的完整prompt，用于记录）
+	// 回测默认使用 hyperliquid 的最小开仓金额（12 USDT）
 	promptSnapshot := decision.BuildPromptSnapshot(
 		cfg.InitialBalance,
 		cfg.Leverage.BTCETHLeverage,
@@ -96,6 +97,7 @@ func NewRunner(cfg BacktestConfig, mcpClient mcp.AIClient) (*Runner, error) {
 		cfg.CustomPrompt,
 		cfg.OverrideBasePrompt,
 		cfg.PromptTemplate,
+		"hyperliquid",
 	)
 
 	createdAt := time.Now().UTC()

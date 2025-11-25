@@ -156,7 +156,8 @@ func GetFullDecisionWithCustomPrompt(ctx *Context, mcpClient mcp.AIClient, custo
 	promptHash := calculatePromptHashFromTemplate(templateName, customPrompt, overrideBase)
 
 	// 3. 构建 System Prompt（固定规则）和 User Prompt（动态数据）
-	systemPrompt := buildSystemPromptWithCustom(ctx.Account.TotalEquity, ctx.BTCETHLeverage, ctx.AltcoinLeverage, customPrompt, overrideBase, templateName)
+	minPositionSize := getMinPositionSize(ctx.Exchange)
+	systemPrompt := buildSystemPromptWithCustom(ctx.Account.TotalEquity, ctx.BTCETHLeverage, ctx.AltcoinLeverage, customPrompt, overrideBase, templateName, minPositionSize)
 	userPrompt := buildUserPrompt(ctx)
 
 	// 4. 调用AI API（使用 system + user prompt）
@@ -342,14 +343,14 @@ func calculatePromptHashFromTemplate(templateName string, customPrompt string, o
 }
 
 // buildSystemPromptWithCustom 构建包含自定义内容的 System Prompt
-func buildSystemPromptWithCustom(accountEquity float64, btcEthLeverage, altcoinLeverage int, customPrompt string, overrideBase bool, templateName string) string {
+func buildSystemPromptWithCustom(accountEquity float64, btcEthLeverage, altcoinLeverage int, customPrompt string, overrideBase bool, templateName string, minPositionSize float64) string {
 	// 如果覆盖基础prompt且有自定义prompt，只使用自定义prompt
 	if overrideBase && customPrompt != "" {
 		return customPrompt
 	}
 
 	// 获取基础prompt（使用指定的模板）
-	basePrompt := buildSystemPrompt(accountEquity, btcEthLeverage, altcoinLeverage, templateName)
+	basePrompt := buildSystemPrompt(accountEquity, btcEthLeverage, altcoinLeverage, templateName, minPositionSize)
 
 	// 如果没有自定义prompt，直接返回基础prompt
 	if customPrompt == "" {
@@ -369,7 +370,7 @@ func buildSystemPromptWithCustom(accountEquity float64, btcEthLeverage, altcoinL
 }
 
 // buildSystemPrompt 构建 System Prompt（使用模板+动态部分）
-func buildSystemPrompt(accountEquity float64, btcEthLeverage, altcoinLeverage int, templateName string) string {
+func buildSystemPrompt(accountEquity float64, btcEthLeverage, altcoinLeverage int, templateName string, minPositionSize float64) string {
 	var sb strings.Builder
 
 	// 1. 加载提示词模板（核心交易策略部分）
@@ -394,11 +395,13 @@ func buildSystemPrompt(accountEquity float64, btcEthLeverage, altcoinLeverage in
 	sb.WriteString("# 硬约束（风险控制）\n\n")
 	sb.WriteString("1. 风险回报比: 必须 ≥ 1:3（冒1%风险，赚3%+收益）\n")
 	sb.WriteString("2. 最多持仓: 3个币种（质量>数量）\n")
-	sb.WriteString(fmt.Sprintf("3. 单币仓位上限: 山寨%.0f U | BTC/ETH %.0f U（基于净值的仓位上限，实际开仓还需考虑可用余额）\n",
+	sb.WriteString(fmt.Sprintf("3. ⚠️ **单币仓位上限（严格执行）**: 山寨%.0f U | BTC/ETH %.0f U\n",
 		accountEquity*1.5, accountEquity*10))
-	sb.WriteString(fmt.Sprintf("4. 杠杆限制: **山寨币最大%dx杠杆** | **BTC/ETH最大%dx杠杆** (⚠️ 严格执行，不可超过)\n", altcoinLeverage, btcEthLeverage))
+	sb.WriteString("   - **超出此限制的决策将被系统拒绝**\n")
+	sb.WriteString("   - 基于净值的仓位上限，实际开仓还需考虑可用余额\n")
+	sb.WriteString(fmt.Sprintf("4. 杠杆限制: **山寨币最大%dx杠杆** | **BTC/ETH最大%dx杠杆** (⚠️ 超限将被拒绝)\n", altcoinLeverage, btcEthLeverage))
 	sb.WriteString("5. 保证金: 总使用率 ≤ 90%\n")
-	sb.WriteString("6. 开仓金额: **必须 ≥12 USDT** (所有币种统一规则，交易所最小名义价值 10 USDT + 20% 安全边际)\n")
+	sb.WriteString(fmt.Sprintf("6. 开仓金额: **必须 ≥%.0f USDT**（交易所要求）\n", minPositionSize))
 	sb.WriteString("7. ⚠️ **开仓保证金检查**: 开仓前必须确保 `所需保证金 ≤ 可用余额`，所需保证金 = position_size_usd / leverage + 手续费\n\n")
 
 	// 3. 输出格式 - 动态生成
@@ -411,11 +414,13 @@ func buildSystemPrompt(accountEquity float64, btcEthLeverage, altcoinLeverage in
 	sb.WriteString("</reasoning>\n\n")
 	sb.WriteString("<decision>\n")
 	sb.WriteString("```json\n[\n")
-	sb.WriteString(fmt.Sprintf("  {\"symbol\": \"BTCUSDT\", \"action\": \"open_short\", \"leverage\": %d, \"position_size_usd\": %.0f, \"stop_loss\": 97000, \"take_profit\": 91000, \"risk_usd\": 300, \"reasoning\": \"下跌趋势+MACD死叉\"},\n", btcEthLeverage, accountEquity*5))
+	sb.WriteString(fmt.Sprintf("  {\"symbol\": \"BTCUSDT\", \"action\": \"open_short\", \"leverage\": %d, \"position_size_usd\": %.0f, \"stop_loss\": 97000, \"take_profit\": 91000, \"risk_usd\": 300, \"reasoning\": \"下跌趋势+MACD死叉\"},\n", btcEthLeverage, accountEquity*8))
 	sb.WriteString("  {\"symbol\": \"SOLUSDT\", \"action\": \"update_stop_loss\", \"new_stop_loss\": 155, \"reasoning\": \"移动止损至保本位\"},\n")
 	sb.WriteString("  {\"symbol\": \"ETHUSDT\", \"action\": \"close_long\", \"reasoning\": \"止盈离场\"}\n")
 	sb.WriteString("]\n```\n")
 	sb.WriteString("</decision>\n\n")
+	sb.WriteString(fmt.Sprintf("**⚠️ 重要提醒**: position_size_usd 必须 ≤ 单币仓位上限（山寨%.0f U | BTC/ETH %.0f U），否则订单将被拒绝\n\n",
+		accountEquity*1.5, accountEquity*10))
 	sb.WriteString("## 字段说明\n\n")
 	sb.WriteString("- `action`: open_long | open_short | close_long | close_short | update_stop_loss | update_take_profit | partial_close | hold | wait\n")
 	sb.WriteString("- 开仓时必填: leverage, position_size_usd, stop_loss, take_profit, risk_usd, reasoning\n")
@@ -807,6 +812,21 @@ func findMatchingBracket(s string, start int) int {
 	return -1
 }
 
+// getMinPositionSize 根据交易所返回最小开仓金额
+// - Binance: MIN_NOTIONAL=100 USDT
+// - Hyperliquid: 最小 12 USDT
+// - Aster: 最小 10 USDT（实际 $5 + 安全边际）
+func getMinPositionSize(exchange string) float64 {
+	switch strings.ToLower(exchange) {
+	case "hyperliquid":
+		return 12.0
+	case "aster":
+		return 10.0
+	default: // binance 及其他
+		return 100.0
+	}
+}
+
 // validateDecision 验证单个决策的有效性
 func validateDecision(d *Decision, accountEquity float64, btcEthLeverage, altcoinLeverage int, exchange string) error {
 	// 验证action
@@ -836,27 +856,19 @@ func validateDecision(d *Decision, accountEquity float64, btcEthLeverage, altcoi
 			maxPositionValue = accountEquity * 10 // BTC/ETH最多10倍账户净值
 		}
 
-		// ✅ Fallback 机制：杠杆超限时自动修正为上限值（而不是直接拒绝决策）
+		// 杠杆验证：超限时拒绝决策（与 Prompt 表述一致）
 		if d.Leverage <= 0 {
 			return fmt.Errorf("杠杆必须大于0: %d", d.Leverage)
 		}
 		if d.Leverage > maxLeverage {
-			log.Printf("⚠️  [Leverage Fallback] %s 杠杆超限 (%dx > %dx)，自动调整为上限值 %dx",
-				d.Symbol, d.Leverage, maxLeverage, maxLeverage)
-			d.Leverage = maxLeverage // 自动修正为上限值
+			return fmt.Errorf("杠杆超限(%dx)，%s 最大允许 %dx", d.Leverage, d.Symbol, maxLeverage)
 		}
 		if d.PositionSizeUSD <= 0 {
 			return fmt.Errorf("仓位大小必须大于0: %.2f", d.PositionSizeUSD)
 		}
 
-		// ✅ 验证最小开仓金额（根据不同交易所设置不同限制）
-		// - Binance: MIN_NOTIONAL=100 USDT（严格限制）
-		// - Hyperliquid: szDecimals=5（精度更高，最小 12 USDT）
-		minPositionSize := 100.0 // 默认 Binance
-		if strings.ToLower(exchange) == "hyperliquid" {
-			minPositionSize = 12.0
-		}
-
+		// ✅ 验证最小开仓金额（使用 getMinPositionSize 保证与 Prompt 一致）
+		minPositionSize := getMinPositionSize(exchange)
 		if d.PositionSizeUSD < minPositionSize {
 			return fmt.Errorf("开仓金额过小(%.2f USDT)，必须≥%.2f USDT（%s 交易所要求）", d.PositionSizeUSD, minPositionSize, exchange)
 		}
@@ -950,6 +962,8 @@ func validateDecision(d *Decision, accountEquity float64, btcEthLeverage, altcoi
 //   - customPrompt: 自定义 prompt
 //   - overrideBase: 是否覆盖基础 prompt
 //   - templateName: 模板名称
-func BuildPromptSnapshot(accountEquity float64, btcEthLeverage, altcoinLeverage int, customPrompt string, overrideBase bool, templateName string) string {
-	return buildSystemPromptWithCustom(accountEquity, btcEthLeverage, altcoinLeverage, customPrompt, overrideBase, templateName)
+//   - exchange: 交易所名称
+func BuildPromptSnapshot(accountEquity float64, btcEthLeverage, altcoinLeverage int, customPrompt string, overrideBase bool, templateName string, exchange string) string {
+	minPositionSize := getMinPositionSize(exchange)
+	return buildSystemPromptWithCustom(accountEquity, btcEthLeverage, altcoinLeverage, customPrompt, overrideBase, templateName, minPositionSize)
 }

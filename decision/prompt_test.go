@@ -22,7 +22,7 @@ func TestBuildSystemPrompt_ContainsAllValidActions(t *testing.T) {
 	}
 
 	// 构建 prompt
-	prompt := buildSystemPrompt(1000.0, 10, 5, "default")
+	prompt := buildSystemPrompt(1000.0, 10, 5, "default", 12.0)
 
 	// 验证每个有效 action 都在 prompt 中出现
 	for _, action := range validActions {
@@ -34,7 +34,7 @@ func TestBuildSystemPrompt_ContainsAllValidActions(t *testing.T) {
 
 // TestBuildSystemPrompt_ActionListCompleteness 测试 action 列表的完整性
 func TestBuildSystemPrompt_ActionListCompleteness(t *testing.T) {
-	prompt := buildSystemPrompt(1000.0, 10, 5, "default")
+	prompt := buildSystemPrompt(1000.0, 10, 5, "default", 12.0)
 
 	// 检查是否包含关键的缺失 action
 	missingActions := []string{
@@ -47,6 +47,71 @@ func TestBuildSystemPrompt_ActionListCompleteness(t *testing.T) {
 		if !strings.Contains(prompt, action) {
 			t.Errorf("Prompt 缺少关键 action: %s（这会导致 AI 返回无效决策）", action)
 		}
+	}
+}
+
+// TestBuildSystemPrompt_PositionLimitEmphasis 测试仓位限制是否被充分强调
+// 目的：确保 AI 能够清楚地看到并遵守仓位限制规则
+func TestBuildSystemPrompt_PositionLimitEmphasis(t *testing.T) {
+	accountEquity := 100.0
+	btcEthLeverage := 50
+	altcoinLeverage := 20
+
+	prompt := buildSystemPrompt(accountEquity, btcEthLeverage, altcoinLeverage, "default", 12.0)
+
+	// 测试用例：验证仓位限制的强调表述
+	tests := []struct {
+		name        string
+		shouldContain string
+		reason      string
+	}{
+		{
+			name:        "规则包含警告符号",
+			shouldContain: "⚠️",
+			reason:      "警告符号能够吸引 AI 注意力",
+		},
+		{
+			name:        "规则包含严格执行提示",
+			shouldContain: "严格执行",
+			reason:      "明确告知 AI 这是硬约束",
+		},
+		{
+			name:        "规则说明超出限制会被拒绝",
+			shouldContain: "拒绝",
+			reason:      "让 AI 知道违规的后果",
+		},
+		{
+			name:        "示例后包含仓位限制提醒",
+			shouldContain: "position_size_usd 必须",
+			reason:      "在示例后再次提醒，确保 AI 记住限制",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if !strings.Contains(prompt, tt.shouldContain) {
+				t.Errorf("Prompt 缺少关键表述 '%s'，原因: %s", tt.shouldContain, tt.reason)
+				t.Logf("\n当前 prompt 内容:\n%s", prompt)
+			}
+		})
+	}
+
+	// 验证仓位上限数值正确
+	expectedBTCETHLimit := accountEquity * 10
+	expectedAltcoinLimit := accountEquity * 1.5
+
+	if !strings.Contains(prompt, fmt.Sprintf("%.0f", expectedBTCETHLimit)) {
+		t.Errorf("Prompt 缺少 BTC/ETH 仓位上限 %.0f", expectedBTCETHLimit)
+	}
+	if !strings.Contains(prompt, fmt.Sprintf("%.0f", expectedAltcoinLimit)) {
+		t.Errorf("Prompt 缺少山寨币仓位上限 %.0f", expectedAltcoinLimit)
+	}
+
+	// 验证示例中的 position_size_usd 不超过上限
+	// 示例应该展示合理的仓位（接近上限但有安全边际）
+	examplePositionSize := accountEquity * 8 // 示例用 80% 上限
+	if !strings.Contains(prompt, fmt.Sprintf("position_size_usd\": %.0f", examplePositionSize)) {
+		t.Errorf("示例中的 position_size_usd 应该是 %.0f（80%% 上限），而不是其他值", examplePositionSize)
 	}
 }
 
@@ -82,7 +147,7 @@ func TestBuildSystemPrompt_NonExistentTemplate_ShouldCallFatal(t *testing.T) {
 	}()
 
 	// 触发致命错误：使用不存在的模板
-	buildSystemPrompt(1000.0, 10, 5, "non_existent_template_xyz")
+	buildSystemPrompt(1000.0, 10, 5, "non_existent_template_xyz", 12.0)
 }
 
 // TestRealFatal_Documentation 文档测试：验证生产环境行为
@@ -113,7 +178,7 @@ func TestRealFatal_Documentation(t *testing.T) {
 
 // TestBuildSystemPromptPartialCloseRequiresSLTP 测试 partial_close 必须要求 new_stop_loss 和 new_take_profit
 func TestBuildSystemPromptPartialCloseRequiresSLTP(t *testing.T) {
-	prompt := buildSystemPrompt(1000.0, 10, 5, "default")
+	prompt := buildSystemPrompt(1000.0, 10, 5, "default", 12.0)
 
 	// 验证 partial_close 指令中包含 new_stop_loss 和 new_take_profit 的要求
 	// 这是 Issue #70 的修复：部分平仓后必须重新设置止损止盈

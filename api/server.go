@@ -1435,6 +1435,7 @@ func (s *Server) handleTraderList(c *gin.Context) {
 			trader.CustomPrompt,
 			trader.OverrideBasePrompt,
 			trader.SystemPromptTemplate,
+			trader.ExchangeID,
 		)
 
 		result = append(result, map[string]interface{}{
