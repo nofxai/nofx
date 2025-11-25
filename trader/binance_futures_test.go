@@ -14,6 +14,12 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// 测试用 API 路径常量
+const (
+	binanceOrderPath        = "/fapi/v1/order"
+	binanceExchangeInfoPath = "/fapi/v1/exchangeInfo"
+)
+
 // ============================================================
 // 一、BinanceFuturesTestSuite - 继承 base test suite
 // ============================================================
@@ -121,7 +127,7 @@ func NewBinanceFuturesTestSuite(t *testing.T) *BinanceFuturesTestSuite {
 			}
 
 		// Mock ExchangeInfo - /fapi/v1/exchangeInfo
-		case path == "/fapi/v1/exchangeInfo":
+		case path == binanceExchangeInfoPath:
 			respBody = map[string]interface{}{
 				"symbols": []map[string]interface{}{
 					{
@@ -176,7 +182,7 @@ func NewBinanceFuturesTestSuite(t *testing.T) *BinanceFuturesTestSuite {
 			}
 
 		// Mock CreateOrder - /fapi/v1/order (POST)
-		case path == "/fapi/v1/order" && r.Method == "POST":
+		case path == binanceOrderPath && r.Method == "POST":
 			symbol := r.FormValue("symbol")
 			if symbol == "" {
 				symbol = "BTCUSDT"
@@ -217,7 +223,7 @@ func NewBinanceFuturesTestSuite(t *testing.T) *BinanceFuturesTestSuite {
 			}
 
 		// Mock CancelOrder - /fapi/v1/order (DELETE)
-		case path == "/fapi/v1/order" && r.Method == "DELETE":
+		case path == binanceOrderPath && r.Method == "DELETE":
 			respBody = map[string]interface{}{
 				"orderId": 123456,
 				"symbol":  r.URL.Query().Get("symbol"),
@@ -441,7 +447,7 @@ func TestGetBrOrderID(t *testing.T) {
 // setupMockServerWithParamCapture 创建能捕获请求参数的 mock server (helper)
 func setupMockServerWithParamCapture(capturedParams *map[string]string) *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/fapi/v1/order" && r.Method == "POST" {
+		if r.URL.Path == binanceOrderPath && r.Method == "POST" {
 			r.ParseForm()
 
 			// 捕获所有表单参数
@@ -469,7 +475,7 @@ func setupMockServerWithParamCapture(capturedParams *map[string]string) *httptes
 				"symbol":  "BTCUSDT",
 				"status":  "FILLED",
 			})
-		} else if r.URL.Path == "/fapi/v1/exchangeInfo" {
+		} else if r.URL.Path == binanceExchangeInfoPath {
 			json.NewEncoder(w).Encode(map[string]interface{}{
 				"symbols": []map[string]interface{}{
 					{
@@ -503,9 +509,9 @@ func createTestTrader(mockServerURL string) *FuturesTrader {
 	}
 }
 
-// TestStopLossAndTakeProfit_NoClosePosition 验证修复：STOP/TAKE_PROFIT 不发送 closePosition
+// TestStopLossAndTakeProfitNoClosePosition 验证修复：STOP/TAKE_PROFIT 不发送 closePosition
 // Issue #94: 币安 API 限制，STOP/TAKE_PROFIT 类型不支持 closePosition=true
-func TestStopLossAndTakeProfit_NoClosePosition(t *testing.T) {
+func TestStopLossAndTakeProfitNoClosePosition(t *testing.T) {
 	tests := []struct {
 		name              string
 		testFunc          func(*FuturesTrader) error
@@ -561,11 +567,11 @@ func TestStopLossAndTakeProfit_NoClosePosition(t *testing.T) {
 	}
 }
 
-// TestSetStopLoss_WithClosePositionWouldFail 验证修复前的代码会失败
+// TestSetStopLossWithClosePositionWouldFail 验证修复前的代码会失败
 // 证明：STOP + closePosition=true 会导致 -4136 错误
-func TestSetStopLoss_WithClosePositionWouldFail(t *testing.T) {
+func TestSetStopLossWithClosePositionWouldFail(t *testing.T) {
 	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/fapi/v1/order" && r.Method == "POST" {
+		if r.URL.Path == binanceOrderPath && r.Method == "POST" {
 			r.ParseForm()
 			orderType := r.FormValue("type")
 			closePosition := r.FormValue("closePosition")
