@@ -758,7 +758,6 @@ func (t *FuturesTrader) SetStopLoss(symbol string, positionSide string, quantity
 		StopPrice(fmt.Sprintf("%.8f", stopPrice)).
 		Quantity(quantityStr).
 		WorkingType(futures.WorkingTypeContractPrice).
-		ClosePosition(true).
 		Do(context.Background())
 
 	if err != nil {
@@ -800,7 +799,6 @@ func (t *FuturesTrader) SetTakeProfit(symbol string, positionSide string, quanti
 		StopPrice(fmt.Sprintf("%.8f", takeProfitPrice)).
 		Quantity(quantityStr).
 		WorkingType(futures.WorkingTypeContractPrice).
-		ClosePosition(true).
 		Do(context.Background())
 
 	if err != nil {

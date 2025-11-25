@@ -1,6 +1,7 @@
 package trader
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -180,6 +181,21 @@ func NewBinanceFuturesTestSuite(t *testing.T) *BinanceFuturesTestSuite {
 			if symbol == "" {
 				symbol = "BTCUSDT"
 			}
+
+			// 模拟币安的参数验证：STOP/TAKE_PROFIT 不能使用 closePosition=true
+			orderType := r.FormValue("type")
+			closePosition := r.FormValue("closePosition")
+
+			if (orderType == "STOP" || orderType == "TAKE_PROFIT") && closePosition == "true" {
+				// 返回币安的 -4136 错误
+				w.WriteHeader(http.StatusBadRequest)
+				json.NewEncoder(w).Encode(map[string]interface{}{
+					"code": -4136,
+					"msg":  "Target strategy invalid for orderType " + orderType + ",closePosition true",
+				})
+				return
+			}
+
 			respBody = map[string]interface{}{
 				"orderId":       123456,
 				"symbol":        symbol,
@@ -417,4 +433,229 @@ func TestGetBrOrderID(t *testing.T) {
 		assert.False(t, ids[id], "订单ID应该唯一")
 		ids[id] = true
 	}
+}
+// ============================================================
+// 专项测试：Issue #94 修复验证
+// ============================================================
+
+// TestSetStopLoss_NoClosePosition 验证 SetStopLoss 不发送 closePosition 参数
+// 这是 Issue #94 的修复验证：STOP 订单类型不能使用 closePosition=true
+func TestSetStopLoss_NoClosePosition(t *testing.T) {
+	var capturedFormValues map[string]string
+
+	// 创建 mock server，捕获请求参数
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/fapi/v1/order" && r.Method == "POST" {
+			r.ParseForm()
+
+			// 捕获所有表单参数
+			capturedFormValues = make(map[string]string)
+			for key := range r.Form {
+				capturedFormValues[key] = r.FormValue(key)
+			}
+
+			// 模拟币安的验证：如果发送了 STOP + closePosition=true，返回错误
+			orderType := r.FormValue("type")
+			closePosition := r.FormValue("closePosition")
+
+			if orderType == "STOP" && closePosition == "true" {
+				w.WriteHeader(http.StatusBadRequest)
+				json.NewEncoder(w).Encode(map[string]interface{}{
+					"code": -4136,
+					"msg":  "Target strategy invalid for orderType STOP,closePosition true",
+				})
+				return
+			}
+
+			// 正常响应
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"orderId": 123456,
+				"symbol":  "BTCUSDT",
+				"status":  "FILLED",
+			})
+		} else if r.URL.Path == "/fapi/v1/exchangeInfo" {
+			// 返回交易所信息
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"symbols": []map[string]interface{}{
+					{
+						"symbol":             "BTCUSDT",
+						"pricePrecision":     2,
+						"quantityPrecision":  3,
+						"baseAssetPrecision": 8,
+						"quotePrecision":     8,
+						"filters": []map[string]interface{}{
+							{"filterType": "PRICE_FILTER", "tickSize": "0.01"},
+							{"filterType": "LOT_SIZE", "stepSize": "0.001"},
+						},
+					},
+				},
+			})
+		} else {
+			json.NewEncoder(w).Encode(map[string]interface{}{})
+		}
+	}))
+	defer mockServer.Close()
+
+	// 创建 trader，使用 mock server
+	client := futures.NewClient("test_key", "test_secret")
+	futures.UseTestnet = true
+	client.BaseURL = mockServer.URL
+
+	trader := &FuturesTrader{
+		client:        client,
+		cacheDuration: 15 * time.Second,
+	}
+
+	// 执行 SetStopLoss
+	err := trader.SetStopLoss("BTCUSDT", "LONG", 0.01, 45000.0)
+
+	// 验证结果
+	assert.NoError(t, err, "SetStopLoss 应该成功（因为没有发送 closePosition）")
+
+	// 验证请求参数
+	assert.NotNil(t, capturedFormValues, "应该捕获到请求参数")
+
+	// ✅ 关键验证：确保没有发送 closePosition 参数
+	closePositionValue, hasClosePosition := capturedFormValues["closePosition"]
+	assert.False(t, hasClosePosition && closePositionValue == "true",
+		"SetStopLoss 不应该发送 closePosition=true 参数（Issue #94 修复）")
+
+	// ✅ 验证必需参数存在
+	assert.Equal(t, "STOP", capturedFormValues["type"], "订单类型应为 STOP")
+	assert.NotEmpty(t, capturedFormValues["quantity"], "应该有 quantity 参数")
+	assert.NotEmpty(t, capturedFormValues["price"], "应该有 price 参数（限价）")
+	assert.NotEmpty(t, capturedFormValues["stopPrice"], "应该有 stopPrice 参数")
+	assert.Equal(t, "SELL", capturedFormValues["side"], "多头止损应该是 SELL")
+	assert.Equal(t, "LONG", capturedFormValues["positionSide"], "持仓方向应为 LONG")
+}
+
+// TestSetTakeProfit_NoClosePosition 验证 SetTakeProfit 不发送 closePosition 参数
+func TestSetTakeProfit_NoClosePosition(t *testing.T) {
+	var capturedFormValues map[string]string
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/fapi/v1/order" && r.Method == "POST" {
+			r.ParseForm()
+
+			capturedFormValues = make(map[string]string)
+			for key := range r.Form {
+				capturedFormValues[key] = r.FormValue(key)
+			}
+
+			orderType := r.FormValue("type")
+			closePosition := r.FormValue("closePosition")
+
+			if orderType == "TAKE_PROFIT" && closePosition == "true" {
+				w.WriteHeader(http.StatusBadRequest)
+				json.NewEncoder(w).Encode(map[string]interface{}{
+					"code": -4136,
+					"msg":  "Target strategy invalid for orderType TAKE_PROFIT,closePosition true",
+				})
+				return
+			}
+
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"orderId": 123456,
+				"symbol":  "BTCUSDT",
+				"status":  "FILLED",
+			})
+		} else if r.URL.Path == "/fapi/v1/exchangeInfo" {
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"symbols": []map[string]interface{}{
+					{
+						"symbol":             "BTCUSDT",
+						"pricePrecision":     2,
+						"quantityPrecision":  3,
+						"baseAssetPrecision": 8,
+						"quotePrecision":     8,
+						"filters": []map[string]interface{}{
+							{"filterType": "PRICE_FILTER", "tickSize": "0.01"},
+							{"filterType": "LOT_SIZE", "stepSize": "0.001"},
+						},
+					},
+				},
+			})
+		} else {
+			json.NewEncoder(w).Encode(map[string]interface{}{})
+		}
+	}))
+	defer mockServer.Close()
+
+	client := futures.NewClient("test_key", "test_secret")
+	futures.UseTestnet = true
+	client.BaseURL = mockServer.URL
+
+	trader := &FuturesTrader{
+		client:        client,
+		cacheDuration: 15 * time.Second,
+	}
+
+	// 执行 SetTakeProfit
+	err := trader.SetTakeProfit("BTCUSDT", "LONG", 0.01, 55000.0)
+
+	// 验证结果
+	assert.NoError(t, err, "SetTakeProfit 应该成功")
+
+	assert.NotNil(t, capturedFormValues, "应该捕获到请求参数")
+
+	// ✅ 关键验证：确保没有发送 closePosition 参数
+	closePositionValue, hasClosePosition := capturedFormValues["closePosition"]
+	assert.False(t, hasClosePosition && closePositionValue == "true",
+		"SetTakeProfit 不应该发送 closePosition=true 参数（Issue #94 修复）")
+
+	// ✅ 验证必需参数
+	assert.Equal(t, "TAKE_PROFIT", capturedFormValues["type"], "订单类型应为 TAKE_PROFIT")
+	assert.NotEmpty(t, capturedFormValues["quantity"], "应该有 quantity 参数")
+	assert.NotEmpty(t, capturedFormValues["price"], "应该有 price 参数（限价）")
+	assert.NotEmpty(t, capturedFormValues["stopPrice"], "应该有 stopPrice 参数")
+	assert.Equal(t, "SELL", capturedFormValues["side"], "多头止盈应该是 SELL")
+	assert.Equal(t, "LONG", capturedFormValues["positionSide"], "持仓方向应为 LONG")
+}
+
+// TestSetStopLoss_WithClosePositionWouldFail 验证修复前的代码会失败
+// 这个测试证明如果发送 closePosition=true，会收到 -4136 错误
+func TestSetStopLoss_WithClosePositionWouldFail(t *testing.T) {
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/fapi/v1/order" && r.Method == "POST" {
+			r.ParseForm()
+
+			orderType := r.FormValue("type")
+			closePosition := r.FormValue("closePosition")
+
+			// 模拟币安的 -4136 错误
+			if orderType == "STOP" && closePosition == "true" {
+				w.WriteHeader(http.StatusBadRequest)
+				json.NewEncoder(w).Encode(map[string]interface{}{
+					"code": -4136,
+					"msg":  "Target strategy invalid for orderType STOP,closePosition true",
+				})
+				return
+			}
+
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"orderId": 123456,
+				"status":  "FILLED",
+			})
+		}
+	}))
+	defer mockServer.Close()
+
+	client := futures.NewClient("test_key", "test_secret")
+	client.BaseURL = mockServer.URL
+
+	// 模拟一个旧版本的实现（发送 closePosition=true）
+	// 直接调用 API 验证会失败
+	_, err := client.NewCreateOrderService().
+		Symbol("BTCUSDT").
+		Side(futures.SideTypeSell).
+		PositionSide(futures.PositionSideTypeLong).
+		Type(futures.OrderTypeStop).
+		StopPrice("45000").
+		Quantity("0.01").
+		ClosePosition(true). // ❌ 这会导致 -4136 错误
+		Do(context.Background())
+
+	// 验证错误
+	assert.Error(t, err, "带有 closePosition=true 的 STOP 订单应该失败")
+	assert.Contains(t, err.Error(), "-4136", "错误应包含 -4136 代码")
 }
